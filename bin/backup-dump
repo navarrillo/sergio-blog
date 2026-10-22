@@ -4,6 +4,7 @@ set -eu
 : "${BLOG_ENV:?Set BLOG_ENV to the absolute blog config/.env}"
 : "${UMAMI_ENV:?Set UMAMI_ENV to the absolute Umami config/.env}"
 : "${UMAMI_BACKUPS_PATH:?Set UMAMI_BACKUPS_PATH}"
+export BLOG_ENV_FILE="$BLOG_ENV"
 cd "$(dirname "$0")/.."
 # pg_dump first; a failure must fail the complete backup job.
 umask 077

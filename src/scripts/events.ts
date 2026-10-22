@@ -15,13 +15,17 @@ if (
       window.umami?.track('project-click', {
         project: target.getAttribute('data-project') || '',
       });
-    else if (target.hasAttribute('data-outbound'))
+    else if (new URL(target.href).origin !== location.origin)
       window.umami?.track('outbound-click', { url: target.href });
   });
   if (
     document.querySelector('[data-no-results]') &&
     new URLSearchParams(location.search).has('q')
-  )
-    window.umami?.track('search-no-results');
+  ) {
+    const report = () => window.umami?.track('search-no-results');
+    if (window.umami) report();
+    else
+      document.addEventListener('blog:analytics-ready', report, { once: true });
+  }
 }
 export {};

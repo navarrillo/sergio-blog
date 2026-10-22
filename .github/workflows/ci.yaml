@@ -20,5 +20,13 @@ jobs:
       - run: docker network create blog-analytics
       - run: cp .env.example .env && mkdir -p data uploads backups && sudo chown -R 1000:1000 data uploads backups
       - run: docker compose up -d --build --wait
+      - name: Validate independent analytics stack
+        run: |
+          bin/setup .local/ci-umami
+          sudo chown -R 999:999 .local/ci-umami/pgdata
+          docker compose --env-file .local/ci-umami/config/.env -f deploy/compose.umami.yaml up -d --wait
+          UMAMI_SMOKE=true node --import tsx tests/umami-smoke.ts
+      - run: docker compose --env-file .local/ci-umami/config/.env -f deploy/compose.umami.yaml down
+        if: always()
       - run: docker compose down
         if: always()
