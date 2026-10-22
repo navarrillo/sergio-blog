@@ -102,9 +102,16 @@ try {
     '/_astro/example.js.map',
   ])
     assert.equal((await get(route)).status, 404, route);
-  for (const route of ['/admin', '/admin/edit', '/admin/inbox'])
+  for (const route of [
+    '/admin',
+    '/admin/edit',
+    '/admin/inbox',
+    '/%61dmin',
+    '/admin%2fedit',
+  ])
     assert.equal((await get(route)).status, 303, route);
   assert.equal((await get('/api/admin/export')).status, 401);
+  assert.equal((await get('/%61pi/admin/export')).status, 401);
   assert.equal(
     (
       await get('/api/admin/post', {
