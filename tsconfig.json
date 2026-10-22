@@ -1,0 +1,1 @@
+{"extends":"astro/tsconfigs/strict","compilerOptions":{"types":["node"],"noUncheckedIndexedAccess":false},"exclude":["dist","node_modules"]}
