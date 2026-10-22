@@ -1,3 +1,4 @@
+import './check-node.mjs';
 import { spawnSync } from 'node:child_process';
 import {
   mkdirSync,
@@ -10,6 +11,10 @@ import {
 } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+const runtimeCheck = readFileSync(
+  new URL('./check-node.mjs', import.meta.url),
+  'utf8',
+);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 process.chdir(root);
 const envFile = process.env.BLOG_ENV;
@@ -58,7 +63,23 @@ async function healthy() {
   }
   throw new Error('Health check timed out');
 }
+function assertImageRuntime(image) {
+  run('docker', [
+    'run',
+    '--rm',
+    '--network',
+    'none',
+    '--entrypoint',
+    'node',
+    image,
+    '--input-type=module',
+    '-e',
+    runtimeCheck,
+  ]);
+}
 async function restore(state) {
+  // Refuse to reintroduce an unpatched runtime, before stopping the current service.
+  assertImageRuntime(state.previous);
   compose(['stop', 'blog']);
   one(
     [
@@ -82,6 +103,7 @@ try {
     const state = JSON.parse(readFileSync(stateFile, 'utf8'));
     if (!state.previous || !state.snapshot)
       throw new Error('No previous release');
+    assertImageRuntime(state.previous);
     // Preserve all edits made since the deployment before reverting its schema snapshot.
     one(['node', '--import', 'tsx', 'bin/storage.ts', 'backup'], state.current);
     await restore(state);
@@ -98,6 +120,7 @@ try {
     run('git', ['checkout', '--detach', sha]);
     const image = 'blog:' + sha.slice(0, 12);
     run('docker', ['build', '-t', image, '.']);
+    assertImageRuntime(image);
     let previous = null;
     try {
       previous = run('docker', [
@@ -111,6 +134,49 @@ try {
     } catch {
       /* First deployment has no previous release. */
     }
+    if (previous) {
+      try {
+        assertImageRuntime(previous);
+      } catch {
+        // Prepare safe recovery for the first security upgrade before touching the service.
+        // Existing blog images use Node 24 / Debian bookworm; retain their application.
+        const major = run('docker', [
+          'run',
+          '--rm',
+          '--network',
+          'none',
+          '--entrypoint',
+          'node',
+          previous,
+          '-p',
+          "process.versions.node.split('.')[0]",
+        ]);
+        if (major !== '24')
+          throw new Error(
+            'Previous image is not Node 24; prepare a compatible patched recovery image before deploying.',
+          );
+        const recovery = 'blog:patched-prev-' + sha.slice(0, 12);
+        run('docker', [
+          'build',
+          '--build-arg',
+          'PREVIOUS_IMAGE=blog:prev',
+          '-f',
+          'deploy/Dockerfile.recovery',
+          '-t',
+          recovery,
+          '.',
+        ]);
+        assertImageRuntime(recovery);
+        previous = run('docker', [
+          'image',
+          'inspect',
+          recovery,
+          '--format',
+          '{{.Id}}',
+        ]);
+        run('docker', ['tag', previous, 'blog:prev']);
+      }
+    }
     compose(['stop', 'blog']);
     let snapshot = null;
     try {
@@ -119,7 +185,7 @@ try {
       if (previous) {
         const output = one(
           ['node', '--import', 'tsx', 'bin/storage.ts', 'backup'],
-          previous,
+          image,
         );
         snapshot = output
           .split('\n')
@@ -169,6 +235,7 @@ try {
         await restore({ previous, snapshot });
         console.error('Previous image and database restored.');
       } else if (previous) {
+        assertImageRuntime(previous);
         compose(['up', '-d', '--no-build', 'blog'], previous);
       }
       throw error;

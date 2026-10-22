@@ -4,7 +4,7 @@ An independent, self-hosted personal blog. Astro 7 / TypeScript, Node 24 standal
 
 ## Start locally
 
-Requires Node **24.14.1** and npm. Dependencies are pinned in `package.json` and `package-lock.json`.
+Requires Node **24.22.1** and npm. `nvm use` selects the pinned version. Older runtimes are rejected at installation and startup. Dependencies are pinned in `package.json` and `package-lock.json`.
 
 ```sh
 npm ci
