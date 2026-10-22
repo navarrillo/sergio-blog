@@ -1,0 +1,14 @@
+.git
+.github
+node_modules
+dist
+.astro
+.env*
+config
+data
+uploads
+backups
+.local
+*.db*
+*.zip
+x-archive

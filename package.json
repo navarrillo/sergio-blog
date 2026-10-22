@@ -1,0 +1,47 @@
+{
+  "name": "sergio-blog",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.14.1 <25"
+  },
+  "scripts": {
+    "dev": "astro dev --host 127.0.0.1",
+    "build": "astro build",
+    "start": "node bin/server.mjs",
+    "typecheck": "astro check",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:integration": "node --import tsx tests/integration.ts",
+    "admin": "node --import tsx bin/admin.ts",
+    "demo": "node --import tsx bin/demo.ts",
+    "migrate": "node --import tsx bin/migrate.ts",
+    "backup": "node --import tsx bin/storage.ts backup",
+    "restore": "node --import tsx bin/storage.ts restore"
+  },
+  "dependencies": {
+    "@astrojs/node": "11.1.9",
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "argon2": "0.45.1",
+    "astro": "7.4.2",
+    "fflate": "0.8.3",
+    "marked": "18.1.1",
+    "sanitize-html": "2.18.1",
+    "sharp": "0.35.5",
+    "tsx": "4.23.15",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.12",
+    "@types/node": "24.10.1",
+    "@types/sanitize-html": "2.16.0",
+    "eslint": "9.39.1",
+    "lighthouse": "13.5.0",
+    "prettier": "3.8.3",
+    "prettier-plugin-astro": "0.14.1",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.48.0",
+    "vitest": "5.0.5"
+  }
+}

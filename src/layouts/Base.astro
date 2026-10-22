@@ -1,0 +1,124 @@
+---
+import '../styles/site.css';
+import { setting } from '../lib/db';
+import { config } from '../lib/config';
+const {
+  title = 'Sergio Navarro',
+  description = setting(
+    'description',
+    'Articles, notes, and projects by Sergio Navarro.',
+  ),
+  post,
+  admin = false,
+} = Astro.props;
+const siteTitle = setting('site_title', 'Sergio Navarro');
+const canonical = new URL(Astro.url.pathname, config.origin).href;
+const tracker = process.env.UMAMI_WEBSITE_ID;
+---
+
+<!doctype html>
+<html lang="en">
+  <head
+    ><meta charset="utf-8" /><meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    /><meta name="description" content={description} /><title>
+      {title === siteTitle ? title : `${title} · ${siteTitle}`}
+    </title><link rel="icon" href="/favicon.svg" /><link
+      rel="canonical"
+      href={canonical}
+    /><meta property="og:title" content={title} /><meta
+      property="og:description"
+      content={description}
+    /><meta property="og:url" content={canonical} /><meta
+      property="og:type"
+      content={post ? 'article' : 'website'}
+    />{
+      post?.image && (
+        <meta
+          property="og:image"
+          content={new URL(post.image, config.origin).href}
+        />
+      )
+    }<link
+      rel="alternate"
+      type="application/rss+xml"
+      title="All posts"
+      href="/rss.xml"
+    /><link
+      rel="alternate"
+      type="application/rss+xml"
+      title="Articles"
+      href="/rss.xml?type=article"
+    />{
+      post && (
+        <script
+          type="application/ld+json"
+          set:html={JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'BlogPosting',
+            headline: post.title,
+            datePublished: post.published_at,
+            dateModified: post.updated_at,
+            author: { '@type': 'Person', name: 'Sergio Navarro' },
+            url: canonical,
+          }).replaceAll('<', '\\u003c')}
+        />
+      )
+    }</head
+  ><body
+    ><a class="skip" href="#main">Skip to content</a><div
+      class:list={['shell', { wide: admin }]}
+    >
+      <header class="site-header">
+        <a class="brand" href="/"
+          ><span class="monogram">sn<span>·</span></span><span
+            >Sergio Navarro</span
+          ></a
+        ><nav aria-label="Main navigation">
+          {
+            (admin
+              ? [
+                  ['/admin', 'Editor'],
+                  ['/admin/projects', 'Projects'],
+                  ['/admin/settings', 'Settings'],
+                  ['/admin/inbox', 'X inbox'],
+                ]
+              : [
+                  ['/posts', 'Writing'],
+                  ['/projects', 'Projects'],
+                  ['/stats', 'Stats'],
+                ]
+            ).map(([href, label]) => (
+              <a
+                href={href}
+                aria-current={Astro.url.pathname === href ? 'page' : undefined}
+              >
+                {label}
+              </a>
+            ))
+          }
+        </nav>
+      </header>{
+        setting('demo') === 'true' && (
+          <aside class="demo-banner">
+            Design preview · All sample writing and projects are demonstration
+            content.
+          </aside>
+        )
+      }<main id="main"><slot /></main><footer class="site-footer">
+        <p>© {new Date().getUTCFullYear()} Sergio Navarro</p><nav
+          aria-label="Footer"
+        >
+          <a href="/rss.xml">RSS ↗</a><a href="/api">API & MCP ↗</a><a
+            href={admin ? '/' : '/admin'}>{admin ? 'View site' : 'Admin'}</a
+          >
+        </nav>
+      </footer>
+    </div>{
+      !admin && tracker && (
+        <script is:inline defer src="/analytics.js" data-website-id={tracker} />
+      )
+    }<script src="../scripts/events.ts"></script></body
+  >
+</html>

@@ -1,0 +1,606 @@
+---
+import Base from '../../layouts/Base.astro';
+import { db, setting } from '../../lib/db';
+import { getDraft, projects, tags } from '../../lib/content';
+import { analytics } from '../../lib/analytics';
+const page = Astro.params.page || '';
+const csrf = Astro.locals.session?.csrf;
+const id = Number(Astro.url.searchParams.get('id'));
+const post = id
+  ? getDraft(id)
+  : {
+      title: '',
+      slug: '',
+      summary: '',
+      body: '',
+      tags: [],
+      type: 'article',
+      status: 'draft',
+      image: '',
+      source_url: '',
+      featured: false,
+      published_at: null,
+    };
+const revisions = id
+  ? (db()
+      .prepare(
+        'SELECT id,created_at FROM revisions WHERE post_id=? ORDER BY id DESC',
+      )
+      .all(id) as any[])
+  : [];
+const posts =
+  page === ''
+    ? (db()
+        .prepare('SELECT * FROM posts ORDER BY updated_at DESC')
+        .all() as any[])
+    : [];
+const allProjects = page === 'projects' ? (projects() as any[]) : [];
+const selectedProject = allProjects.find((p) => p.id === id);
+const a = page === '' ? await analytics() : null;
+const inbox =
+  page === 'inbox'
+    ? (db()
+        .prepare('SELECT * FROM x_imports ORDER BY date DESC')
+        .all() as any[])
+    : [];
+const importResult = Astro.url.searchParams.has('imported')
+  ? setting('import_report')
+  : null;
+const known = ['', 'login', 'edit', 'projects', 'settings', 'inbox', 'tags'];
+if (!known.includes(page) || (page === 'edit' && !post))
+  Astro.response.status = 404;
+---
+
+<Base title={page === 'login' ? 'Sign in' : 'Editor'} admin>
+  {
+    page === 'login' ? (
+      <section class="login">
+        <>
+          <span class="eyebrow">PRIVATE WORKSPACE</span>
+          <h1>
+            Welcome back<span class="accent">.</span>
+          </h1>
+          <p>Sign in with your password and authenticator code.</p>
+          <form method="post" action="/api/admin/login">
+            <>
+              <label>
+                Password
+                <input
+                  type="password"
+                  name="password"
+                  autocomplete="current-password"
+                  required
+                  maxlength="1024"
+                />
+              </label>
+              <label>
+                Authentication code
+                <input
+                  name="code"
+                  inputmode="numeric"
+                  pattern="[0-9]{6}"
+                  autocomplete="one-time-code"
+                  required
+                  maxlength="6"
+                />
+              </label>
+              <button type="submit">Sign in →</button>
+            </>
+          </form>
+        </>
+      </section>
+    ) : (
+      <>
+        <div class="admin-heading">
+          <>
+            <div>
+              <>
+                <span class="eyebrow">YOUR PRIVATE WORKSPACE</span>
+                <h1>
+                  {page === 'edit'
+                    ? 'Make room for an idea.'
+                    : page === 'settings'
+                      ? 'The personal details.'
+                      : page === 'projects'
+                        ? 'Things you’re building.'
+                        : page === 'inbox'
+                          ? 'From X to something new.'
+                          : page === 'tags'
+                            ? 'Topics.'
+                            : 'A place to write.'}
+                </h1>
+              </>
+            </div>
+            <form action="/api/admin/logout" method="post">
+              <>
+                <input type="hidden" name="csrf" value={csrf} />
+                <button class="quiet">Sign out</button>
+              </>
+            </form>
+          </>
+        </div>
+        {Astro.url.searchParams.has('saved') && (
+          <p class="notice" role="status">
+            Saved successfully.
+          </p>
+        )}
+        {page === '' && (
+          <>
+            {a && (
+              <div class="admin-analytics">
+                <strong>Last 30 days</strong>
+                <span>
+                  {a.stats?.pageviews?.value ?? a.stats?.pageviews ?? '—'} page
+                  views
+                </span>
+                <span>
+                  {a.stats?.visitors?.value ?? a.stats?.visitors ?? '—'}{' '}
+                  visitors
+                </span>
+                <small>Updated {a.updated_at}</small>
+                <a href="https://analytics.sergionavarro.me">Open Umami ↗</a>
+              </div>
+            )}
+            <div class="admin-actions">
+              <a class="button" href="/admin/edit">
+                + New post
+              </a>
+              <a href="/admin/tags">Manage tags</a>
+              <a href="/api/admin/export">Export everything ↓</a>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Updated (UTC)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {posts.map((p) => (
+                    <tr>
+                      <td>
+                        <a href={'/admin/edit?id=' + p.id}>
+                          {p.featured ? '★ ' : ''}
+                          {p.title}
+                        </a>
+                      </td>
+                      <td>{p.type}</td>
+                      <td>
+                        <span class="pill">{p.status}</span>
+                      </td>
+                      <td>{p.updated_at.slice(0, 10)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {!posts.length && (
+              <div class="empty">
+                <p>No posts yet. Your next idea starts here.</p>
+              </div>
+            )}
+          </>
+        )}
+        {page === 'edit' && post && (
+          <div class="editor-layout">
+            <form id="post-form" method="post" action="/api/admin/post">
+              <input type="hidden" name="csrf" value={csrf} />
+              <input type="hidden" name="id" value={id || ''} />
+              <label>
+                Title
+                <input
+                  name="title"
+                  id="post-title"
+                  value={post.title}
+                  required
+                  maxlength="240"
+                  placeholder="What’s on your mind?"
+                />
+              </label>
+              <div class="form-grid">
+                <label>
+                  Slug
+                  <input
+                    name="slug"
+                    id="slug"
+                    value={post.slug}
+                    pattern="[a-z0-9]+(-[a-z0-9]+)*"
+                    required
+                  />
+                </label>
+                <label>
+                  Type
+                  <select name="type">
+                    {['article', 'note', 'x_post'].map((t) => (
+                      <option selected={post.type === t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <label>
+                Summary
+                <textarea name="summary" rows="2" maxlength="1000">
+                  {post.summary}
+                </textarea>
+              </label>
+              <div
+                class="editor-toolbar"
+                role="toolbar"
+                aria-label="Markdown formatting"
+              >
+                <button type="button" data-wrap="**">
+                  Bold
+                </button>
+                <button type="button" data-wrap="_">
+                  Italic
+                </button>
+                <button type="button" data-prefix="## ">
+                  Heading
+                </button>
+                <button type="button" data-prefix="- ">
+                  List
+                </button>
+                <button type="button" id="insert-link">
+                  Link
+                </button>
+                <button type="button" id="preview-button">
+                  Preview
+                </button>
+              </div>
+              <label>
+                Markdown
+                <textarea
+                  class="markdown-editor"
+                  id="body"
+                  name="body"
+                  rows="20"
+                >
+                  {post.body}
+                </textarea>
+              </label>
+              <div id="preview" class="prose preview" hidden />
+              <label>
+                Tags (comma separated)
+                <input
+                  name="tags"
+                  value={post.tags.join(', ')}
+                  placeholder="building, technology"
+                />
+              </label>
+              <div class="form-grid">
+                <label>
+                  Cover image path
+                  <input
+                    name="image"
+                    value={post.image}
+                    placeholder="/uploads/…webp"
+                  />
+                </label>
+                <label>
+                  Original URL
+                  <input name="source_url" type="url" value={post.source_url} />
+                </label>
+              </div>
+              <div class="form-grid">
+                <label>
+                  Editorial state
+                  <select name="status">
+                    <option selected={post.status === 'draft'}>draft</option>
+                    <option selected={post.status === 'published'}>
+                      published
+                    </option>
+                    <option selected={post.status === 'trash'}>trash</option>
+                  </select>
+                </label>
+                <label>
+                  Publication date (UTC)
+                  <input
+                    name="published_at"
+                    type="datetime-local"
+                    value={post.published_at?.slice(0, 16)}
+                  />
+                </label>
+              </div>
+              <label class="checkbox">
+                <input
+                  type="checkbox"
+                  name="featured"
+                  checked={post.featured}
+                />{' '}
+                Feature on homepage
+              </label>
+              <button type="submit">Save post →</button>
+              <p class="muted">
+                Publish by choosing “published”. Move to draft to unpublish.
+                Trashed posts stay recoverable here.
+              </p>
+            </form>
+            <aside class="editor-aside">
+              <h2>Images</h2>
+              <p>JPEG, PNG or WebP. Maximum 8 MB. Metadata is removed.</p>
+              <form
+                id="upload-form"
+                action="/api/admin/upload"
+                method="post"
+                enctype="multipart/form-data"
+              >
+                <input type="hidden" name="csrf" value={csrf} />
+                <label>
+                  Upload image
+                  <input
+                    type="file"
+                    name="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    required
+                  />
+                </label>
+                <button class="secondary">Upload</button>
+                <output id="upload-result" />
+              </form>
+              <h2>Revisions</h2>
+              <p>
+                Restoring a revision creates a draft and preserves the current
+                text.
+              </p>
+              {revisions.map((r) => (
+                <form action="/api/admin/revision" method="post">
+                  <input type="hidden" name="csrf" value={csrf} />
+                  <input type="hidden" name="id" value={id} />
+                  <input type="hidden" name="revision" value={r.id} />
+                  <button class="revision-button">
+                    Restore {r.created_at.slice(0, 19).replace('T', ' ')}
+                  </button>
+                </form>
+              ))}
+              {!revisions.length && <p>No previous revisions yet.</p>}
+              {id && <a href={'/posts/' + post.slug}>View published page ↗</a>}
+            </aside>
+          </div>
+        )}
+        {page === 'settings' && (
+          <form
+            class="settings-form"
+            action="/api/admin/settings"
+            method="post"
+          >
+            <input type="hidden" name="csrf" value={csrf} />
+            {[
+              ['site_title', 'Site title'],
+              ['description', 'Site description'],
+              ['photo', 'Photo upload path'],
+            ].map(([key, label]) => (
+              <label>
+                {label}
+                <input name={key} value={setting(key)} />
+              </label>
+            ))}
+            <label>
+              Biography
+              <textarea name="bio" rows="4">
+                {setting('bio')}
+              </textarea>
+            </label>
+            <label>
+              Profile links (JSON)
+              <textarea name="links" rows="5">
+                {setting('links', '[]')}
+              </textarea>
+            </label>
+            <p class="muted">
+              Example: [
+              {'{"label":"GitHub","url":"https://github.com/navarrillo"}'}]
+            </p>
+            <p>
+              Upload a photograph using an editor’s image uploader, then paste
+              its returned path here.
+            </p>
+            <button>Save settings →</button>
+          </form>
+        )}
+        {page === 'projects' && (
+          <>
+            <div class="projects-grid">
+              {allProjects.map((p) => (
+                <article class="project-card">
+                  <span class="pill">{p.status}</span>
+                  <h2>{p.name}</h2>
+                  <p>{p.description}</p>
+                  <a href={'/admin/projects?id=' + p.id}>Edit</a>
+                  <form action="/api/admin/delete-project" method="post">
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="id" value={p.id} />
+                    <button class="quiet">Delete project</button>
+                  </form>
+                </article>
+              ))}
+            </div>
+            <form
+              class="settings-form"
+              action="/api/admin/project"
+              method="post"
+            >
+              <h2>{selectedProject ? 'Edit project' : 'Add a project'}</h2>
+              <input type="hidden" name="csrf" value={csrf} />
+              <input
+                type="hidden"
+                name="id"
+                value={selectedProject?.id || ''}
+              />
+              {[
+                ['name', 'Name'],
+                ['description', 'Description'],
+                ['image', 'Image upload path'],
+                ['url', 'Project URL'],
+                ['source_url', 'Source URL'],
+              ].map(([key, label]) => (
+                <label>
+                  {label}
+                  <input
+                    name={key}
+                    value={selectedProject?.[key] || ''}
+                    required={key === 'name'}
+                  />
+                </label>
+              ))}
+              <label>
+                Status
+                <select name="status">
+                  {['active', 'completed', 'paused'].map((s) => (
+                    <option selected={selectedProject?.status === s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button>Save project →</button>
+            </form>
+          </>
+        )}
+        {page === 'tags' && (
+          <>
+            <p>
+              Edit a post’s tags in the editor, or rename a tag across all posts
+              below. Revisions preserve each change.
+            </p>
+            <div class="topic-list">
+              {(tags() as any[]).map((t) => (
+                <a href={'/tags/' + t.tag}>
+                  #{t.tag} ({t.count})
+                </a>
+              ))}
+            </div>
+            <form
+              class="settings-form"
+              action="/api/admin/rename-tag"
+              method="post"
+            >
+              <input type="hidden" name="csrf" value={csrf} />
+              <label>
+                Existing tag
+                <input name="old" required pattern="[a-z0-9-]+" />
+              </label>
+              <label>
+                Replacement (leave empty to remove)
+                <input name="new" pattern="[a-z0-9-]+" />
+              </label>
+              <button>Update tag across posts</button>
+            </form>
+          </>
+        )}
+        {page === 'inbox' && (
+          <>
+            <p>
+              Archive entries remain private. Choose entries to create a draft,
+              then review it in the editor before publishing. Original source
+              records are retained separately.
+            </p>
+            {importResult && <pre class="import-result">{importResult}</pre>}
+            <div class="form-grid">
+              <form
+                action="/api/admin/import"
+                method="post"
+                enctype="multipart/form-data"
+              >
+                <h2>Import your archive</h2>
+                <input type="hidden" name="csrf" value={csrf} />
+                <label>
+                  Official X archive (.zip, tweets.js or JSON; max 32 MB)
+                  <input
+                    name="file"
+                    type="file"
+                    accept=".zip,.js,.json"
+                    required
+                  />
+                </label>
+                <button>Import to private inbox</button>
+              </form>
+              <form action="/api/admin/manual-x" method="post">
+                <h2>Add a post manually</h2>
+                <input type="hidden" name="csrf" value={csrf} />
+                <label>
+                  X post ID
+                  <input name="x_id" required pattern="[0-9]{1,30}" />
+                </label>
+                <label>
+                  Original URL (optional)
+                  <input
+                    name="url"
+                    type="url"
+                    placeholder="https://x.com/…/status/…"
+                  />
+                </label>
+                <label>
+                  Date (UTC)
+                  <input name="date" type="datetime-local" required />
+                </label>
+                <label>
+                  Original text
+                  <textarea name="text" required rows="3" />
+                </label>
+                <button>Add to inbox</button>
+              </form>
+            </div>
+            <form action="/api/admin/convert" method="post">
+              <input type="hidden" name="csrf" value={csrf} />
+              <h2>Review imported entries</h2>
+              {inbox.map((item) => (
+                <article class="inbox-item">
+                  <label class="checkbox">
+                    <input
+                      type="checkbox"
+                      name="selected"
+                      value={item.id}
+                      disabled={Boolean(item.post_id)}
+                    />
+                    <span>
+                      {item.date} {item.post_id ? '· Draft created' : ''}
+                    </span>
+                  </label>
+                  <p>{item.text}</p>
+                  <a href={item.url} rel="noopener noreferrer">
+                    Original ↗
+                  </a>
+                  {JSON.parse(item.media).map((src: string) => (
+                    <img
+                      src={src}
+                      width="120"
+                      alt="Imported attachment"
+                      loading="lazy"
+                    />
+                  ))}
+                  <details>
+                    <summary>Preserved original record</summary>
+                    <pre>{item.original}</pre>
+                  </details>
+                </article>
+              ))}
+              {!inbox.length && <p>The inbox is empty.</p>}
+              <div class="form-grid">
+                <label>
+                  Draft title
+                  <input name="title" required />
+                </label>
+                <label>
+                  Convert selected entries to
+                  <select name="type">
+                    <option value="x_post">X post / thread</option>
+                    <option value="note">Note</option>
+                    <option value="article">Article draft</option>
+                  </select>
+                </label>
+              </div>
+              <button>Create draft from selection →</button>
+            </form>
+          </>
+        )}
+        {!known.includes(page) && <p>Page not found.</p>}
+      </>
+    )
+  }
+  <script src="../../scripts/editor.ts"></script>
+</Base>

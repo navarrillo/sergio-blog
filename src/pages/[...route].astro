@@ -1,0 +1,498 @@
+---
+import Base from '../layouts/Base.astro';
+import PostList from '../components/PostList.astro';
+import {
+  queryPosts,
+  getPost,
+  tags,
+  projects,
+  renderMarkdown,
+  redirectFor,
+} from '../lib/content';
+import { publicStats } from '../lib/analytics';
+import { setting } from '../lib/db';
+const route = Astro.params.route || '';
+const parts = route.split('/');
+const isHome = !route,
+  isArchive =
+    route === 'posts' ||
+    (parts[0] === 'tags' &&
+      parts.length === 2 &&
+      /^[a-z0-9-]+$/.test(parts[1])),
+  isArticle = parts[0] === 'posts' && parts.length === 2,
+  isProjects = route === 'projects',
+  isStats = route === 'stats',
+  isApi = route === 'api' || route === 'mcp-connect';
+const post = isArticle ? getPost(parts[1]) : undefined;
+if (isArticle && !post) {
+  const target = redirectFor(parts[1]);
+  if (target) return Astro.redirect('/posts/' + target.slug, 301);
+}
+const missing =
+  (!isHome && !isArchive && !isArticle && !isProjects && !isStats && !isApi) ||
+  (isArticle && !post);
+if (missing) Astro.response.status = 404;
+const filters = new URLSearchParams(Astro.url.searchParams);
+if (parts[0] === 'tags') filters.set('tag', parts[1]);
+if (isHome) filters.set('limit', '6');
+let result = { items: [] as any[], next_cursor: null as string | null };
+let queryError = false;
+if (isHome || isArchive) {
+  try {
+    result = queryPosts(filters);
+  } catch {
+    queryError = true;
+    Astro.response.status = 400;
+  }
+}
+const allTags = isHome || isArchive ? (tags() as any[]) : [];
+const allProjects = isHome || isProjects ? (projects() as any[]) : [];
+const stats = isStats ? await publicStats() : null;
+const featured = isHome
+  ? queryPosts(new URLSearchParams({ limit: '100' }))
+      .items.filter((p: any) => p.featured)
+      .slice(0, 2)
+  : [];
+const title = missing
+  ? 'Page not found'
+  : post?.title ||
+    (isHome
+      ? 'Sergio Navarro'
+      : isArchive
+        ? 'Writing'
+        : isProjects
+          ? 'Projects'
+          : isStats
+            ? 'In numbers'
+            : 'Open by design');
+const next = new URL(Astro.url);
+if (result.next_cursor) next.searchParams.set('cursor', result.next_cursor);
+const photo = setting('photo');
+const links = JSON.parse(setting('links', '[]'));
+---
+
+<Base title={title} post={post} description={post?.summary}>
+  {
+    isHome && (
+      <>
+        <section class="intro">
+          <div>
+            <>
+              <div class="eyebrow">
+                <span class="status-dot" /> A PERSONAL CORNER OF THE INTERNET
+              </div>
+              <h1>
+                Ideas, experiments,
+                <br />
+                and things I’m building<span class="accent">.</span>
+              </h1>
+              <p class="lead">
+                {setting(
+                  'bio',
+                  'A place for articles, short notes, and projects. Written by Sergio Navarro.',
+                )}
+              </p>
+              <div class="intro-links">
+                <a class="text-link" href="/posts">
+                  Explore the writing <span>↗</span>
+                </a>
+                {links.map((l: any) => (
+                  <a href={l.url} rel="noopener noreferrer" data-outbound>
+                    {l.label} ↗
+                  </a>
+                ))}
+              </div>
+            </>
+          </div>
+          {photo ? (
+            <img
+              class="portrait"
+              src={photo}
+              width="132"
+              height="156"
+              alt="Sergio Navarro"
+            />
+          ) : (
+            <div class="portrait-placeholder" aria-hidden="true">
+              S<span>N</span>
+              <i>FIELD NOTES</i>
+            </div>
+          )}
+        </section>
+        {featured.length > 0 && (
+          <section class="featured-section">
+            <div class="section-label">
+              <h2>Selected writing</h2>
+              <span>START HERE</span>
+            </div>
+            <div class="featured-grid">
+              {featured.map((p: any) => (
+                <a class="featured-card" href={'/posts/' + p.slug}>
+                  <span class="eyebrow">{p.tags[0] || p.type}</span>
+                  <h3>{p.title}</h3>
+                  <p>{p.summary}</p>
+                  <span class="card-arrow" aria-hidden="true">
+                    ↗
+                  </span>
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
+        <section>
+          <div class="section-label">
+            <>
+              <h2>Latest entries</h2>
+              <a href="/posts">View archive ↗</a>
+            </>
+          </div>
+          {result.items.length ? (
+            <PostList posts={result.items} />
+          ) : (
+            <div class="empty">
+              <h3>A fresh page.</h3>
+              <p>The first entry will appear here when it is published.</p>
+            </div>
+          )}
+        </section>
+        <section class="project-teaser">
+          <>
+            <div>
+              <>
+                <span class="eyebrow">FROM IDEA TO SOMETHING REAL</span>
+                <h2>Always a work in progress.</h2>
+                <p>
+                  A collection of projects, experiments, and things made along
+                  the way.
+                </p>
+              </>
+            </div>
+            <a class="button secondary" href="/projects">
+              Explore projects ↗
+            </a>
+          </>
+        </section>
+      </>
+    )
+  }
+  {
+    isArchive && (
+      <>
+        <form class="filters" method="get" action="/posts" role="search">
+          <>
+            <label class="search-label">
+              <>
+                <span class="sr-only">Search writing</span>
+                <input
+                  type="search"
+                  name="q"
+                  placeholder="Search the archive…"
+                  value={filters.get('q') || ''}
+                />
+              </>
+            </label>
+            <label>
+              <>
+                <span class="sr-only">Post type</span>
+                <select name="type">
+                  <option value="">All types</option>
+                  {['article', 'note', 'x_post'].map((t) => (
+                    <option selected={filters.get('type') === t} value={t}>
+                      {t === 'x_post' ? 'From X' : t}
+                    </option>
+                  ))}
+                </select>
+              </>
+            </label>
+            <label>
+              <>
+                <span class="sr-only">Tag</span>
+                <select name="tag">
+                  <option value="">All topics</option>
+                  {allTags.map((t) => (
+                    <option
+                      selected={filters.get('tag') === t.tag}
+                      value={t.tag}
+                    >
+                      {t.tag} ({t.count})
+                    </option>
+                  ))}
+                </select>
+              </>
+            </label>
+            <button type="submit">Search</button>
+          </>
+        </form>
+        {queryError ? (
+          <p role="alert">
+            Invalid search parameters. <a href="/posts">Reset search</a>
+          </p>
+        ) : result.items.length ? (
+          <PostList posts={result.items} />
+        ) : (
+          <div class="empty" data-no-results>
+            <h2>No entries found.</h2>
+            <p>
+              Try another search or <a href="/posts">browse all writing</a>.
+            </p>
+          </div>
+        )}
+        {result.next_cursor && (
+          <a
+            class="button secondary pagination"
+            href={next.pathname + next.search}
+          >
+            Older entries ↓
+          </a>
+        )}
+      </>
+    )
+  }
+  {
+    post && (
+      <article class="article">
+        <header class="article-header">
+          <>
+            <div class="eyebrow">
+              {post.type}{' '}
+              <>
+                <span> / </span>
+                <time datetime={post.published_at}>
+                  {new Date(post.published_at).toLocaleDateString('en-GB', {
+                    day: 'numeric',
+                    month: 'long',
+                    year: 'numeric',
+                    timeZone: 'UTC',
+                  })}
+                </time>
+              </>
+            </div>
+            <h1>{post.title}</h1>
+            <p class="lead">{post.summary}</p>
+            <div class="tags">
+              {post.tags.map((t: string) => (
+                <a href={'/tags/' + t}>#{t}</a>
+              ))}
+            </div>
+          </>
+        </header>
+        {post.image && <img class="cover" src={post.image} alt="" />}
+        <div class="prose" set:html={renderMarkdown(post.body)} />
+        {post.source_url && (
+          <p>
+            <a href={post.source_url} rel="noopener noreferrer" data-outbound>
+              View original post ↗
+            </a>
+          </p>
+        )}
+        <div class="article-bottom">
+          <>
+            <span>Written by Sergio Navarro</span>
+            <a href={'/api/v1/posts/' + post.slug + '.md'}>
+              Read as Markdown ↗
+            </a>
+          </>
+        </div>
+      </article>
+    )
+  }
+  {
+    isProjects && (
+      <>
+        <div class="projects-grid">
+          {allProjects.map((p) => (
+            <article class="project-card">
+              {p.image && <img src={p.image} alt="" loading="lazy" />}
+              <span class="project-status">● {p.status}</span>
+              <h2>{p.name}</h2>
+              <p>{p.description}</p>
+              <div class="intro-links">
+                {p.url && (
+                  <a
+                    href={p.url}
+                    data-project={p.name}
+                    rel="noopener noreferrer"
+                  >
+                    Visit project ↗
+                  </a>
+                )}
+                {p.source_url && (
+                  <a
+                    href={p.source_url}
+                    data-outbound
+                    rel="noopener noreferrer"
+                  >
+                    Source ↗
+                  </a>
+                )}
+              </div>
+            </article>
+          ))}
+        </div>
+        {!allProjects.length && (
+          <div class="empty">
+            <h2>Something is taking shape.</h2>
+            <p>Projects will appear here when they are ready to share.</p>
+          </div>
+        )}
+      </>
+    )
+  }
+  {
+    stats && (
+      <>
+        <>
+          <section class="page-heading">
+            <>
+              <span class="eyebrow">A SMALL, GROWING BODY OF WORK</span>
+              <h1>
+                In numbers<span class="accent">.</span>
+              </h1>
+              <p>Writing activity and the topics that connect it.</p>
+            </>
+          </section>
+          <div class="stat-grid">
+            {['article', 'note', 'x_post'].map((type) => (
+              <div>
+                <strong>
+                  {Number(
+                    (stats.editorial as any[]).find((p) => p.type === type)
+                      ?.count || 0,
+                  )}
+                </strong>
+                <span>{type === 'x_post' ? 'Posts from X' : type + 's'}</span>
+              </div>
+            ))}
+          </div>
+          <section class="stats-section">
+            <div class="topic-list">
+              {(stats.tags as any[]).map((t) => (
+                <a href={'/tags/' + t.tag}>
+                  #{t.tag} <span>{t.count}</span>
+                </a>
+              ))}
+            </div>
+            {!stats.tags.length && <p>No published topics yet.</p>}
+          </section>
+          <section class="stats-section">
+            <h2>Most read · last 30 days</h2>
+            {stats.popular.length ? (
+              <ol>
+                {stats.popular.map((p: any) => (
+                  <li>
+                    <a href={p.path}>
+                      {getPost(p.path.split('/').at(-1))?.title}
+                    </a>{' '}
+                    <span>{p.views} views</span>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p>Traffic statistics are not available yet.</p>
+            )}
+            <p class="muted">
+              {stats.updated_at
+                ? 'Last updated ' +
+                  new Date(stats.updated_at).toUTCString() +
+                  '. The last available snapshot is retained during outages.'
+                : 'Analytics has not collected a snapshot yet.'}
+            </p>
+          </section>
+        </>
+      </>
+    )
+  }
+  {
+    isApi && (
+      <>
+        <>
+          <section class="page-heading">
+            <>
+              <span class="eyebrow">FOR READERS, DEVELOPERS, AND AGENTS</span>
+              <h1>
+                Open by design<span class="accent">.</span>
+              </h1>
+              <p>
+                Read published writing through a small, public API. No key
+                needed.
+              </p>
+            </>
+          </section>
+          <div class="prose">
+            <>
+              <h2>Content API</h2>
+              <p>
+                All endpoints are read only and share a limit of 60 requests per
+                minute per IP with MCP.
+              </p>
+              <pre>
+                <code>
+                  GET /api/v1/posts?q=building&amp;tag=projects&amp;type=article
+                  <br />
+                  GET /api/v1/posts/:slug
+                  <br />
+                  GET /api/v1/posts/:slug.md
+                  <br />
+                  GET /api/v1/posts/:slug.txt
+                  <br />
+                  GET /api/v1/tags
+                  <br />
+                  GET /api/v1/projects
+                  <br />
+                  GET /api/v1/stats
+                </code>
+              </pre>
+              <p>
+                The posts endpoint accepts <code>q</code>, <code>tag</code>,{' '}
+                <code>type</code>, <code>since</code> (ISO date),{' '}
+                <code>limit</code> (default 20, maximum 100), and{' '}
+                <code>cursor</code>. Follow <code>next_cursor</code> for the
+                next page.
+              </p>
+              <p>
+                <a href="/openapi.json">OpenAPI contract ↗</a> ·{' '}
+                <a href="/llms.txt">llms.txt ↗</a>
+              </p>
+              <h2>Connect with MCP</h2>
+              <p>
+                Add this remote Streamable HTTP server URL to a compatible MCP
+                client:
+              </p>
+              <pre>
+                <code>{new URL('/mcp', Astro.url.origin).href}</code>
+              </pre>
+              <p>
+                Available tools: <code>search_posts</code>,{' '}
+                <code>get_post</code>, <code>list_tags</code>, and{' '}
+                <code>list_projects</code>. Searches return summaries; use{' '}
+                <code>get_post</code> for the full Markdown. This server uses
+                anonymous access and has no persistent sessions.
+              </p>
+              <h2>Feeds</h2>
+              <p>
+                <a href="/rss.xml">All writing</a> ·{' '}
+                <a href="/rss.xml?type=article">Articles only</a>
+              </p>
+            </>
+          </div>
+        </>
+      </>
+    )
+  }
+  {
+    missing && (
+      <section class="empty error-page">
+        <>
+          <span class="eyebrow">404 / A SMALL DETOUR</span>
+          <h1>
+            This page wandered off<span class="accent">.</span>
+          </h1>
+          <p>The address may have changed, or the page is not published.</p>
+          <a class="button" href="/">
+            Back to the homepage ↗
+          </a>
+        </>
+      </section>
+    )
+  }
+</Base>

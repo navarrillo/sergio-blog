@@ -1,0 +1,540 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Sergio Navarro Blog API",
+    "version": "1.0.0",
+    "description": "Anonymous read-only API. 60 requests/minute/IP shared with MCP. Posts list returns items and next_cursor; drafts and future-dated posts are excluded."
+  },
+  "servers": [
+    {
+      "url": "https://blog.sergionavarro.me"
+    }
+  ],
+  "paths": {
+    "/api/v1/posts": {
+      "get": {
+        "summary": "Search published posts",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Full text query"
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Exact tag"
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["article", "note", "x_post"]
+            },
+            "description": "article, note, or x_post"
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "ISO timestamp"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            },
+            "description": "Default 20, maximum 100"
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque next_cursor from a previous response"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Published data only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "429": {
+            "description": "Shared IP rate limit exceeded; retry after 60 seconds",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until retry"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/posts/{slug}": {
+      "get": {
+        "summary": "Read a post",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Published data only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Post"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "429": {
+            "description": "Shared IP rate limit exceeded; retry after 60 seconds",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until retry"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/posts/{slug}.md": {
+      "get": {
+        "summary": "Read Markdown",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Published data only",
+            "content": {
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "429": {
+            "description": "Shared IP rate limit exceeded; retry after 60 seconds",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until retry"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/posts/{slug}.txt": {
+      "get": {
+        "summary": "Read plain text",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Published data only",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "429": {
+            "description": "Shared IP rate limit exceeded; retry after 60 seconds",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until retry"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/tags": {
+      "get": {
+        "summary": "Tags with public counts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Published data only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Tag"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "429": {
+            "description": "Shared IP rate limit exceeded; retry after 60 seconds",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until retry"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects": {
+      "get": {
+        "summary": "Public projects",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Published data only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Project"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "429": {
+            "description": "Shared IP rate limit exceeded; retry after 60 seconds",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until retry"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/stats": {
+      "get": {
+        "summary": "Public aggregate statistics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Published data only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Stats"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid query"
+          },
+          "404": {
+            "description": "Not found"
+          },
+          "429": {
+            "description": "Shared IP rate limit exceeded; retry after 60 seconds",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "type": "integer"
+                },
+                "description": "Seconds until retry"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PostSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "slug",
+          "summary",
+          "type",
+          "status",
+          "tags",
+          "image",
+          "source_url",
+          "featured",
+          "published_at",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["article", "note", "x_post"]
+          },
+          "status": {
+            "type": "string",
+            "const": "published"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "image": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string"
+          },
+          "featured": {
+            "type": "boolean"
+          },
+          "published_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Post": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/PostSummary"
+          },
+          {
+            "type": "object",
+            "required": ["body"],
+            "properties": {
+              "body": {
+                "type": "string",
+                "description": "Original Markdown body"
+              }
+            }
+          }
+        ]
+      },
+      "PostPage": {
+        "type": "object",
+        "required": ["items", "next_cursor"],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PostSummary"
+            }
+          },
+          "next_cursor": {
+            "type": ["string", "null"]
+          }
+        }
+      },
+      "Tag": {
+        "type": "object",
+        "required": ["tag", "count"],
+        "properties": {
+          "tag": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "image",
+          "status",
+          "url",
+          "source_url"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "image": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "source_url": {
+            "type": "string"
+          }
+        }
+      },
+      "Stats": {
+        "type": "object",
+        "properties": {
+          "editorial": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "enum": ["article", "note", "x_post"]
+                },
+                "count": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Tag"
+            }
+          },
+          "popular": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "views": {
+                  "type": "integer"
+                }
+              }
+            }
+          },
+          "updated_at": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  }
+}

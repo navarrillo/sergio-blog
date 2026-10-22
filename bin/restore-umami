@@ -1,0 +1,13 @@
+#!/bin/sh
+# Restore ONLY into a disposable, freshly initialized PostgreSQL compose project.
+set -eu
+: "${UMAMI_ENV:?Set UMAMI_ENV to a temporary restore config}"
+project="${RESTORE_PROJECT:-umami-restore}"
+case "$project" in umami-restore*) ;; *) echo 'Use an umami-restore-prefixed project name' >&2; exit 1;; esac
+: "${1:?Pass a custom-format pg_dump file}"
+cd "$(dirname "$0")/.."
+docker compose --project-name "$project" --env-file "$UMAMI_ENV" -f deploy/compose.umami.yaml up -d --wait postgres
+count=$(docker compose --project-name "$project" --env-file "$UMAMI_ENV" -f deploy/compose.umami.yaml exec -T postgres psql -U umami -d umami -Atc "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")
+[ "$count" = 0 ] || { echo 'Restore database must have no public tables' >&2; exit 1; }
+docker compose --project-name "$project" --env-file "$UMAMI_ENV" -f deploy/compose.umami.yaml exec -T postgres pg_restore -U umami -d umami --exit-on-error < "$1"
+echo 'Umami database restored into the temporary project.'

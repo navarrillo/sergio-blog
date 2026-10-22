@@ -1,0 +1,17 @@
+#!/bin/sh
+# Run on the host before the existing restic job. Both services must be running.
+set -eu
+: "${BLOG_ENV:?Set BLOG_ENV to the absolute blog config/.env}"
+: "${UMAMI_ENV:?Set UMAMI_ENV to the absolute Umami config/.env}"
+: "${UMAMI_BACKUPS_PATH:?Set UMAMI_BACKUPS_PATH}"
+export BLOG_ENV_FILE="$BLOG_ENV"
+cd "$(dirname "$0")/.."
+# pg_dump first; a failure must fail the complete backup job.
+umask 077
+mkdir -p "$UMAMI_BACKUPS_PATH"
+name="$(date -u +%Y-%m-%dT%H-%M-%SZ).dump"
+# Avoid a pipeline masking pg_dump failures.
+docker compose --env-file "$UMAMI_ENV" -f deploy/compose.umami.yaml exec -T postgres sh -c 'pg_dump -U umami -d umami --format=custom' > "$UMAMI_BACKUPS_PATH/$name.incomplete"
+mv "$UMAMI_BACKUPS_PATH/$name.incomplete" "$UMAMI_BACKUPS_PATH/$name"
+docker compose --env-file "$BLOG_ENV" exec -T blog npm run backup
+find "$UMAMI_BACKUPS_PATH" -type f -name '*.dump' -mtime +7 -delete

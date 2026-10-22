@@ -1,0 +1,62 @@
+name: umami
+services:
+  umami:
+    image: ghcr.io/umami-software/umami:3.4.0
+    environment:
+      DATABASE_URL: postgresql://umami:${UMAMI_DB_PASSWORD:?required}@postgres:5432/umami
+      APP_SECRET: ${UMAMI_APP_SECRET:?required}
+      TWO_FACTOR_ENCRYPTION_KEY: ${UMAMI_TWO_FACTOR_KEY:?required}
+      DISABLE_TELEMETRY: '1'
+      TRACKER_SCRIPT_NAME: script.js
+    depends_on:
+      postgres: { condition: service_healthy }
+    ports: ['127.0.0.1:${UMAMI_PORT:-8011}:3000']
+    networks: [default, analytics]
+    read_only: true
+    tmpfs: ['/tmp:size=64m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 768m
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3000/api/heartbeat').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '3' }
+  postgres:
+    image: postgres:17.9-bookworm
+    environment:
+      POSTGRES_USER: umami
+      POSTGRES_DB: umami
+      POSTGRES_PASSWORD: ${UMAMI_DB_PASSWORD:?required}
+    volumes: ['${UMAMI_PGDATA_PATH:?required}:/var/lib/postgresql/data']
+    networks: [default]
+    read_only: true
+    tmpfs: ['/tmp:size=64m,mode=1777', '/var/run/postgresql:size=16m,mode=1777']
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    # Initialize the bind mount with postgres UID/GID (999:999).
+    user: '999:999'
+    mem_limit: 512m
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U umami -d umami']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '3' }
+networks:
+  analytics:
+    name: blog-analytics
+    external: true

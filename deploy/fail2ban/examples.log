@@ -1,0 +1,3 @@
+Oct 22 10:00:00 host caddy[123]: {"level":"info","request":{"remote_ip":"192.0.2.10","method":"POST","host":"blog.example.com","uri":"/api/admin/login"},"status":401}
+Oct 22 10:00:01 host caddy[123]: {"level":"info","request":{"remote_ip":"192.0.2.11","method":"POST","host":"analytics.example.com","uri":"/api/auth/login"},"status":429}
+Oct 22 10:00:02 host caddy[123]: {"level":"info","request":{"remote_ip":"192.0.2.12","method":"POST","uri":"/api/admin/login"},"status":303}

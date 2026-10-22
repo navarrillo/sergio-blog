@@ -1,0 +1,43 @@
+---
+const { posts = [] } = Astro.props;
+const date = (s: string) =>
+  new Date(s).toLocaleDateString('en-GB', {
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+---
+
+<div class="post-list">
+  {
+    posts.map((post: any) => (
+      <article class="post-row">
+        <>
+          <div class="post-date">
+            <>
+              <time datetime={post.published_at}>
+                {date(post.published_at)}
+              </time>
+              <span>{post.type === 'x_post' ? 'From X' : post.type}</span>
+            </>
+          </div>
+          <div>
+            <>
+              <a class="post-title" href={'/posts/' + post.slug}>
+                {post.title}
+                <span aria-hidden="true"> ↗</span>
+              </a>
+              <p>{post.summary}</p>
+              <div class="tags">
+                {post.tags.map((tag: string) => (
+                  <a href={'/tags/' + tag}>#{tag}</a>
+                ))}
+              </div>
+            </>
+          </div>
+        </>
+      </article>
+    ))
+  }
+</div>
