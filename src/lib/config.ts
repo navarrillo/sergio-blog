@@ -1,3 +1,4 @@
+import '../../bin/check-node.mjs';
 import path from 'node:path';
 process.umask(0o077);
 export const config = {

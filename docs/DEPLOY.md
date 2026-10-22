@@ -4,7 +4,7 @@ This runbook is for the operator. It has not been executed against any productio
 
 ## 1. Prepare storage and configuration
 
-Requirements: Docker Engine + Compose v2, Git, Node 24.14.1 for host-side scripts, the existing host Caddy 2, and fail2ban with systemd support. Do not install another reverse proxy. Reserve loopback ports 8010 (blog) and 8011 (Umami); both are configurable.
+Requirements: Docker Engine + Compose v2, Git, Node 24.22.1 for host-side scripts, the existing host Caddy 2, and fail2ban with systemd support. Do not install another reverse proxy. Reserve loopback ports 8010 (blog) and 8011 (Umami); both are configurable.
 
 Use the established application layout:
 
@@ -45,10 +45,10 @@ Skip creation if the network already exists. PostgreSQL has no published port an
 
 ```sh
 docker compose --env-file /home/deploy/apps/umami/config/.env \
-  -f deploy/compose.umami.yaml up -d --wait
+  -f deploy/compose.umami.yaml up -d --build --wait
 ```
 
-Images are pinned: Node 24.14.1 bookworm slim, Umami 3.4.0, PostgreSQL 17.9 bookworm. Dependency versions and lockfile are fixed. Changes to versions require an explicit review and a fresh restore drill. Umami's upstream image runs as UID 1001. Its temporary files are written to tmpfs; database files stay in the independent bind mount.
+Images are pinned: Node 24.22.1 bookworm slim, Umami 3.4.0 with Node 22.23.4 (Alpine 3.24), PostgreSQL 17.9 bookworm. Dependency versions and lockfile are fixed. Changes to versions require an explicit review and a fresh restore drill. Umami's upstream image runs as UID 1001. Its temporary files are written to tmpfs; database files stay in the independent bind mount.
 
 Before publishing analytics, access its loopback port through an operator-managed SSH tunnel. Log in to upstream Umami's initial `admin` / `umami` account and immediately change the default password. Create a website for `blog.sergionavarro.me`. Use a dedicated least-privilege account for backend statistics (without interactive 2FA, because this account uses the login API). Enable 2FA on the human dashboard administrator if desired; `UMAMI_TWO_FACTOR_KEY` is generated for this. Set the blog's `UMAMI_USERNAME`, `UMAMI_PASSWORD`, and `UMAMI_WEBSITE_ID`. `UMAMI_INTERNAL_URL=http://umami:3000` uses the shared internal Docker network. Do not use the external analytics hostname for backend requests. No account credentials are emitted in HTML or JavaScript.
 
@@ -161,3 +161,13 @@ The previous immutable image ID and snapshot path are retained in private `confi
 ## 8. Before launch
 
 Replace demonstration biography/photo/content with approved material; production has no seeds by default. Confirm HTTPS, proxy IP trust, TOTP, redirects, search, RSS, OpenAPI and a real MCP client. Verify named Umami events and 30-day counts against the dashboard, admin/preview/test exclusions, public/private data separation, full recovery and journal filter matches. Re-run Lighthouse on the real HTTPS origin; local scores are baseline evidence only.
+
+## October 2026 Node security update
+
+The blog requires Node >=24.22.1 <25, including host-side setup/deploy/backup tools. Use `.nvmrc` with your existing version manager; installing dependencies with an older Node is rejected. The launcher and CLI helpers also check the runtime before serving or opening storage. The machine-wide Node installation is not changed by repository updates.
+
+Umami 3.4.0 upstream embeds Node 22.23.2. `deploy/Dockerfile.umami` preserves that application and its dependencies while copying the official Node 22.23.4 binary for the same Alpine 3.24 ABI. Build with `--build` to use the corrected image. Verify both running versions with `docker compose exec -T blog node --version` and the equivalent Umami command.
+
+The release helper validates newly built and rollback images against the corrected Node 24 minimum. An old vulnerable release is refused before rollback stops the current service. Before the first security upgrade stops the service, it prepares a patched recovery image from the previous Node 24/bookworm application, replacing only Node. If that preparation fails, deployment stops while the existing service remains running. The recorded rollback target is this patched baseline, preserving the previous application and schema. Historical state files that still reference vulnerable images are rejected by manual rollback. Rebuild existing images and recreate containers explicitly during the operator-managed deployment. Do not deploy old Git refs that predate these checks.
+
+Official advisory: https://nodejs.org/en/blog/vulnerability/october-2026-security-releases

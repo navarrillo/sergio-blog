@@ -1,0 +1,6 @@
+# Keep the previous application/schema while preparing a safe rollback runtime.
+ARG PREVIOUS_IMAGE=blog:prev
+FROM node:24.22.1-bookworm-slim AS patched-node
+FROM ${PREVIOUS_IMAGE}
+COPY --from=patched-node /usr/local/bin/node /usr/local/bin/node
+RUN test "$(node --version)" = "v24.22.1"

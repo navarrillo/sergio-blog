@@ -1,7 +1,10 @@
 name: umami
 services:
   umami:
-    image: ghcr.io/umami-software/umami:3.4.0
+    image: umami:3.4.0-node22.23.4
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.umami
     environment:
       DATABASE_URL: postgresql://umami:${UMAMI_DB_PASSWORD:?required}@postgres:5432/umami
       APP_SECRET: ${UMAMI_APP_SECRET:?required}

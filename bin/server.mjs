@@ -1,3 +1,4 @@
+import './check-node.mjs';
 // Keep the official standalone adapter, but resolve proxy trust from the TCP peer
 // before Astro inspects forwarding headers. Never infer trust from Host headers.
 import { createServer } from 'node:http';

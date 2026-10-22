@@ -32,3 +32,11 @@ The code and scripts are delivered; these require the actual deployment environm
 X imports accept JSON, official `tweets.js`, and ZIP media archives up to 32 MB compressed / 128 MB decompressed. Larger official archives must be split before import. The private inbox is the batch preview; selection creates drafts and never publishes. Video/animated media are reported as unsupported/missing and are not transcoded. There are no paid X requests, scraping, metrics fetches, AI calls, newsletter, comments or public chat.
 
 The 15-minute analytics snapshot is updated on demand. If Umami fails, the most recent persisted snapshot is served and timestamped. If none exists, statistics show an explicit unavailable state. Site images are public immutable uploads even when referenced by a draft. Text previews and source archives remain authenticated.
+
+## Node security correction · 23 October 2026
+
+The original baseline above used Node 24.14.1 and did not cover the October security release. The corrected blog build/runtime and CI pin Node 24.22.1. The minimum is enforced through package engines, strict installation, `.nvmrc`, startup/CLI checks and image checks during deployment/rollback. The separate Umami 3.4.0 image was measured as Node 22.23.2 and is now derived with official Node 22.23.4 for its existing Alpine 3.24 ABI.
+
+With the official Node 24.22.1 archive (SHA-256 checked against nodejs.org), lint, typecheck, all 11 tests, build and full HTTP/MCP/editorial/backup/restore integration pass. Rebuilt containers report v24.22.1 and v22.23.4 and reach healthy state. The real Umami pageview/event smoke and the blog backup pass. The actual old v24.14.1 runtime is rejected by the guard; patched versions are accepted. No CVE exploit payload was executed: remediation evidence is the official fixed release floor, actual runtime inspection and compatibility tests.
+
+The first-upgrade recovery image preserves the previous blog application and replaces its Node binary with 24.22.1 before the current service is stopped. Its runtime and health are checked locally; unsafe historical rollback targets are rejected before stopping a current service. This correction changes no production host or global developer Node installation; operators must rebuild/recreate services and use the corrected host runtime.
