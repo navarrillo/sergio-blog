@@ -1,0 +1,24 @@
+name: Validate
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.14.1
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm run test:integration
+      - run: docker network create blog-analytics
+      - run: cp .env.example .env && mkdir -p data uploads backups && sudo chown -R 1000:1000 data uploads backups
+      - run: docker compose up -d --build --wait
+      - run: docker compose down
+        if: always()

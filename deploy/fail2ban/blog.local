@@ -1,0 +1,19 @@
+[blog]
+enabled = true
+filter = blog
+backend = systemd
+journalmatch = _SYSTEMD_UNIT=caddy.service
+port = http,https
+maxretry = 6
+findtime = 10m
+bantime = 1h
+
+[umami]
+enabled = true
+filter = umami
+backend = systemd
+journalmatch = _SYSTEMD_UNIT=caddy.service
+port = http,https
+maxretry = 6
+findtime = 10m
+bantime = 1h

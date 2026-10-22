@@ -1,0 +1,47 @@
+name: blog
+services:
+  blog:
+    image: ${BLOG_IMAGE:-blog:live}
+    build: .
+    env_file: ${BLOG_ENV_FILE:-.env}
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8080
+      DATA_DIR: /app/data
+      UPLOADS_DIR: /app/uploads
+      BACKUPS_DIR: /app/backups
+    command:
+      [sh, -c, 'node --import tsx bin/migrate.ts && exec node bin/server.mjs']
+    user: '1000:1000'
+    read_only: true
+    tmpfs: ['/tmp:size=64m,mode=1777']
+    volumes:
+      - ${BLOG_DATA_PATH:-./data}:/app/data
+      - ${BLOG_UPLOADS_PATH:-./uploads}:/app/uploads
+      - ${BLOG_BACKUPS_PATH:-./backups}:/app/backups
+    ports: ['127.0.0.1:${BLOG_PORT:-8010}:8080']
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 512m
+    restart: unless-stopped
+    networks: [default, analytics]
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: '10m', max-file: '3' }
+networks:
+  analytics:
+    name: blog-analytics
+    external: true

@@ -1,0 +1,11 @@
+analytics.sergionavarro.me {
+    encode zstd gzip
+    log {
+        output stderr
+        format json
+    }
+    request_body {
+        max_size 1MB
+    }
+    reverse_proxy 127.0.0.1:8011
+}

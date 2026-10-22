@@ -1,0 +1,17 @@
+blog.sergionavarro.me {
+    encode zstd gzip
+    log {
+        output stderr
+        format json
+    }
+    request_body {
+        max_size 33MB
+    }
+    @immutable path /_astro/*
+    header @immutable Cache-Control "public, max-age=31536000, immutable"
+    reverse_proxy 127.0.0.1:8010 {
+        # Replace client-supplied forwarding headers. App trusts only its configured peer.
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Real-IP {remote_host}
+    }
+}
