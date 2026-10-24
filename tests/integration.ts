@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { request as httpRequest } from 'node:http';
+import sharp from 'sharp';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, mkdirSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -138,6 +140,61 @@ try {
     await get('/admin/edit?id=' + published, { headers: { cookie } })
   ).text();
   const csrf = adminHtml.match(/name="csrf" value="([^"]+)"/)![1];
+  const image = await sharp({
+    create: { width: 8, height: 8, channels: 3, background: 'blue' },
+  })
+    .png()
+    .toBuffer();
+  const uploadForm = new FormData();
+  uploadForm.set('csrf', csrf);
+  uploadForm.set(
+    'file',
+    new Blob([new Uint8Array(image)], { type: 'image/png' }),
+    'sample.png',
+  );
+  const uploaded = await get('/api/admin/upload', {
+    method: 'POST',
+    headers: { cookie, origin: base },
+    body: uploadForm,
+  });
+  assert.equal(uploaded.status, 200);
+  const { path: imagePath } = await uploaded.json();
+  assert.match(imagePath, /^\/uploads\/[a-f0-9-]+\.webp$/);
+  const served = await get(imagePath);
+  assert.equal(served.status, 200);
+  assert.equal(served.headers.get('content-type'), 'image/webp');
+  assert.equal(
+    served.headers.get('cache-control'),
+    'public, max-age=31536000, immutable',
+  );
+  assert.equal(served.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(
+    (await sharp(Buffer.from(await served.arrayBuffer())).metadata()).format,
+    'webp',
+  );
+  // Preserve the raw target: fetch/browser URL parsing would erase ../ before sending it.
+  for (const target of [
+    '/uploads/../posts/public',
+    '/uploads/%2e%2e/posts/public',
+    '/uploads/%252e%252e%252fposts/public',
+    '/%75ploads/../posts/public',
+    '/uploads%2f..%2fposts%2fpublic',
+    '/uploads/..\\posts/public',
+    '/uploads/not-an-image.webp',
+    '/uploads/abcd.png',
+    '/uploads/abcd.webp',
+    '/uploads/%zz',
+  ]) {
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      const req = httpRequest(base, { path: target }, (response) => {
+        response.resume();
+        resolve(response.statusCode);
+      });
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(status, 404, target);
+  }
   const badCsrf = await get('/api/admin/post', {
     method: 'POST',
     headers: { cookie, origin: base },
