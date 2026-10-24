@@ -1,6 +1,6 @@
 # Private agent drafts API
 
-Sergio can give a trusted writing assistant a bearer token to prepare drafts. Sergio alone reviews and publishes through the existing password + TOTP admin. This API uses one JSON HTTP request with Markdown input and a small JSON response. It is disabled by default and is absent from public OpenAPI, llms.txt and MCP.
+Sergio can give a trusted writing assistant a bearer token to prepare drafts. Sergio alone reviews and publishes through the existing password + TOTP admin. Writes use one JSON HTTP request with Markdown input and a small metadata response. Listing returns metadata; reading one eligible draft includes its Markdown. It is disabled by default and is absent from public OpenAPI, llms.txt and MCP.
 
 ## Enable and manage tokens
 
@@ -27,10 +27,11 @@ All routes below require `Authorization: Bearer <token>`:
 | Method | Path                        | Result                                           |
 | ------ | --------------------------- | ------------------------------------------------ |
 | POST   | `/api/agent/v1/drafts`      | Create an owned draft, 201                       |
-| GET    | `/api/agent/v1/drafts/<id>` | Read owned draft metadata, 200                   |
+| GET    | `/api/agent/v1/drafts`      | List eligible owned drafts, 200                  |
+| GET    | `/api/agent/v1/drafts/<id>` | Read owned draft content, 200                    |
 | PATCH  | `/api/agent/v1/drafts/<id>` | Update supplied fields, snapshot a revision, 200 |
 
-Every successful response has exactly these fields, including GET (Markdown is never echoed):
+Successful POST and PATCH responses contain only these metadata fields:
 
 ```json
 {
@@ -41,6 +42,44 @@ Every successful response has exactly these fields, including GET (Markdown is n
   "updated_at": "2026-10-24T12:00:00.000Z"
 }
 ```
+
+`GET /api/agent/v1/drafts` returns only this token's eligible drafts, ordered by `updated_at` descending, then `id` descending:
+
+```json
+{
+  "items": [
+    {
+      "id": 42,
+      "title": "My draft",
+      "slug": "my-draft",
+      "updated_at": "2026-10-24T12:00:00.000Z",
+      "preview_url": "/admin/edit?id=42"
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+Each item contains exactly those five fields, with no Markdown body. `?limit=` defaults to 20 and accepts integers from 1 to 50. Pass the opaque `next_cursor` unchanged as `?cursor=` for the next page; null marks the end. Invalid/empty cursors, invalid limits, duplicate parameters and query parameters other than `limit` and `cursor` return 400. Pagination uses a keyset, so ties in update time are resolved by descending ID. Updating a draft changes its position; this is a live list, not a snapshot across requests.
+
+`GET /api/agent/v1/drafts/<id>` returns exactly the writable fields plus metadata:
+
+```json
+{
+  "id": 42,
+  "title": "My draft",
+  "slug": "my-draft",
+  "summary": "A short introduction",
+  "body": "# Markdown draft",
+  "tags": ["writing"],
+  "type": "article",
+  "status": "draft",
+  "preview_url": "/admin/edit?id=42",
+  "updated_at": "2026-10-24T12:00:00.000Z"
+}
+```
+
+Reading never exposes featured/image/source URL/publication date, token ownership, lock metadata or revisions. A PATCH is immediately visible in subsequent reads. Both GET routes share the same ownership and permanent-lock restrictions: publishing, trashing or locking a draft removes it from the list and makes an individual read return 404. Odd/noncanonical IDs also return 404.
 
 Open `preview_url` on the blog origin in Sergio's browser; it requires his admin session. The drafts list and editor show `Created by <token name>`. A token can only access its own drafts while their status remains draft. Another token's draft, an admin-created post, a published post, or a trashed post all return the same 404. Any status change permanently removes agent access, including if Sergio later restores the post to draft. Sergio's text edits without a status change keep agent access. Ownership and status checks run inside the editorial write transaction.
 
@@ -59,7 +98,13 @@ PATCH preserves omitted fields and requires at least one supplied field. Omitted
 
 Malformed JSON, unknown fields or invalid values return generic 400; unsupported content type returns 415. Requests larger than 1,250,000 encoded JSON bytes return 413 (the separate Markdown limit still applies, allowing JSON escaping overhead). No auth, malformed/unknown/revoked bearer values and admin-cookie-only requests return generic 401. Failed-auth IP throttling can return 429. Bearer tokens are ignored by `/admin` and `/api/admin`; those routes retain their existing authentication. There are no agent cookies, CSRF tokens or browser CORS permissions.
 
-Each token has a separate persisted allowance of **30 writes/hour** and **120 metadata reads/hour**. Authenticated invalid write attempts consume the write budget. Limits survive restarts; 429 includes `Retry-After` in seconds. Failed bearer attempts are limited separately per real client IP, respecting the existing trusted-proxy boundary. Successful calls log only token name, method, path, draft ID and status. No tokens or Markdown are logged. Responses use `Cache-Control: no-store`.
+Each token has three independent persisted hourly budgets:
+
+- **30 successful writes**: only committed POST/PATCH operations returning 201/200 consume this allowance. The reservation and editorial save share one transaction, including revisions, so rejected writes roll the reservation back. Concurrent requests cannot exceed the allowance.
+- **120 reads**: listing and individual content reads share this budget, including rejected list queries. They consume neither write budget.
+- **60 rejected writes**: validation/content-type/size failures (400/413/415) and ownership/not-found rejections on recognized draft-write routes (404) use this separate allowance. Further rejected writes return 429; a valid write can still succeed if its successful-write budget remains available. Quota 429 responses do not consume another budget.
+
+All three budgets survive restarts and are per token. A 429 response includes `Retry-After` in seconds for the exhausted bucket. A 401 continues to use only the failed-auth budget per real client IP, respecting the existing trusted-proxy boundary. Successful calls log only token name, method, path, draft ID (null for listing) and status. No tokens or Markdown are logged. Responses use `Cache-Control: no-store`.
 
 There is no listing of other drafts, publish/schedule/trash/delete, upload, import/export, settings, projects, or private admin access. Sergio adds images during review. Published content remains readable through the existing public API. The feature flag off returns 404 for the whole agent namespace.
 
@@ -99,7 +144,25 @@ jq -n --rawfile body draft.md '{body: $body}' |
     --header @<(printf 'Authorization: Bearer %s\n' "$AGENT_TOKEN") \
     --header 'Content-Type: application/json' \
     --data-binary @- "$BLOG_ORIGIN/api/agent/v1/drafts/$DRAFT_ID"
+```
+
+List the caller's eligible drafts (read budget only):
+
+```sh
+curl --silent --show-error --fail-with-body \
+  --header @<(printf 'Authorization: Bearer %s\n' "$AGENT_TOKEN") \
+  "$BLOG_ORIGIN/api/agent/v1/drafts?limit=20"
+```
+
+For another page, pass the returned `next_cursor` URL-encoded as `cursor`, with the same limit. Never substitute a draft ID for the opaque cursor.
+
+Read one eligible draft, including its Markdown and latest edits:
+
+```sh
+curl --silent --show-error --fail-with-body \
+  --header @<(printf 'Authorization: Bearer %s\n' "$AGENT_TOKEN") \
+  "$BLOG_ORIGIN/api/agent/v1/drafts/$DRAFT_ID"
 unset AGENT_TOKEN
 ```
 
-The examples use process substitution supported by bash and zsh. Only metadata is returned. Send the preview link to Sergio for review; no API call can publish it.
+The examples use process substitution supported by bash and zsh. Create, patch and list responses stay small; an individual read returns the draft content. Send the preview link to Sergio for review; no API call can publish it.
