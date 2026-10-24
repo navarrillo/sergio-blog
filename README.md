@@ -57,6 +57,9 @@ npm run typecheck
 npm test
 npm run build
 npm run test:integration
+# First browser run only:
+npx playwright install chromium
+npm run test:browser
 ```
 
 Integration uses a fresh temporary database, launches a local server on port 44321, connects the official MCP client, checks private content exclusion, edits and redirects, session/CSRF behavior, spoofed forwarding headers, rate limits, exports, analytics outages, restart and a backup/restore drill.
@@ -66,3 +69,5 @@ See [deployment instructions](docs/DEPLOY.md), [architecture](docs/ARCHITECTURE.
 ## Git workflow
 
 `development` is the default integration branch. `main` receives deployable releases through pull requests from `development`. CI uses GitHub-hosted Ubuntu runners only. Git commits use a GitHub noreply identity. Runtime files, archives, configuration and personal data are ignored from the first commit.
+
+Browser smoke tests use disposable SQLite/uploads and synthetic credentials. They inspect the production build under its real CSP and check format buttons, sanitized preview, image upload/read, JSON-LD round-tripping, project/outbound/no-result events, and admin tracking exclusions. Analytics is intercepted locally; no test events leave the browser fixture. Integration also checks generated static HTML and every rendered page for inline script bodies without matching CSP hashes. Runtime scripts and styles are emitted externally; dynamic JSON-LD is escaped and its exact bytes are hash-authorized per response.
