@@ -71,39 +71,62 @@ const tracker = process.env.UMAMI_WEBSITE_ID;
       class:list={['shell', { wide: admin }]}
     >
       <header class="site-header">
-        <a class="brand" href="/"
-          ><span class="monogram">sn<span>·</span></span><span
-            >Sergio Navarro</span
-          ></a
-        ><nav aria-label="Main navigation">
-          {
-            (admin
-              ? [
-                  ['/admin', 'Editor'],
-                  ['/admin/projects', 'Projects'],
-                  ['/admin/settings', 'Settings'],
-                  ['/admin/inbox', 'X inbox'],
-                ]
-              : [
-                  ['/posts', 'Writing'],
-                  ['/projects', 'Projects'],
-                  ['/stats', 'Stats'],
-                ]
-            ).map(([href, label]) => (
-              <a
-                href={href}
-                aria-current={Astro.url.pathname === href ? 'page' : undefined}
-              >
-                {label}
-              </a>
-            ))
-          }
-        </nav>
+        {
+          admin ? (
+            <>
+              <>
+                <a class="brand" href="/admin">
+                  Sergio Navarro / editor
+                </a>
+                <nav aria-label="Main navigation">
+                  {[
+                    ['/admin', 'posts'],
+                    ['/admin/projects', 'projects'],
+                    ['/admin/settings', 'settings'],
+                    ['/admin/inbox', 'X inbox'],
+                  ].map(([href, label]) => (
+                    <a
+                      href={href}
+                      aria-current={
+                        Astro.url.pathname === href ? 'page' : undefined
+                      }
+                    >
+                      {label}
+                    </a>
+                  ))}
+                </nav>
+              </>
+            </>
+          ) : (
+            <nav aria-label="Main navigation">
+              <span class="nav-label">Nav:</span>
+              {[
+                ['/', 'home'],
+                ['/posts', 'writing'],
+                ['/projects', 'projects'],
+                ['/stats', 'stats'],
+                ['/rss.xml', 'rss'],
+                ['/api', 'api'],
+                ['/llms.txt', 'llms'],
+                ['/mcp-connect', 'mcp'],
+              ].map(([href, label]) => (
+                <a
+                  href={href}
+                  aria-current={
+                    Astro.url.pathname === href ? 'page' : undefined
+                  }
+                >
+                  {label}
+                </a>
+              ))}
+            </nav>
+          )
+        }
       </header>{
         setting('demo') === 'true' && (
           <aside class="demo-banner">
-            Design preview · All sample writing and projects are demonstration
-            content.
+            Preview with demo content · Sample writing and projects, not
+            published work.
           </aside>
         )
       }<main id="main"><slot /></main><footer class="site-footer">

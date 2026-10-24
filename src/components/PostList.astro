@@ -1,43 +1,77 @@
 ---
-const { posts = [] } = Astro.props;
+const { posts = [], grouped = false, layout = 'list' } = Astro.props;
 const date = (s: string) =>
   new Date(s).toLocaleDateString('en-GB', {
+    day: 'numeric',
     month: 'short',
-    day: '2-digit',
+    timeZone: 'UTC',
+  });
+const month = (s: string) =>
+  new Date(s).toLocaleDateString('en-GB', {
+    month: 'long',
     year: 'numeric',
     timeZone: 'UTC',
   });
+const groups: { title: string; items: any[] }[] = [];
+for (const post of posts) {
+  const title = grouped ? month(post.published_at) : '';
+  const last = groups.at(-1);
+  if (last?.title === title) last.items.push(post);
+  else groups.push({ title, items: [post] });
+}
 ---
 
-<div class="post-list">
-  {
-    posts.map((post: any) => (
-      <article class="post-row">
-        <>
-          <div class="post-date">
-            <>
-              <time datetime={post.published_at}>
-                {date(post.published_at)}
-              </time>
-              <span>{post.type === 'x_post' ? 'From X' : post.type}</span>
-            </>
-          </div>
-          <div>
-            <>
-              <a class="post-title" href={'/posts/' + post.slug}>
-                {post.title}
-                <span aria-hidden="true"> ↗</span>
-              </a>
-              <p>{post.summary}</p>
-              <div class="tags">
-                {post.tags.map((tag: string) => (
-                  <a href={'/tags/' + tag}>#{tag}</a>
-                ))}
+{
+  groups.map((group) => (
+    <section class="post-group" aria-label={group.title || undefined}>
+      {group.title && <h2 class="month-heading">{group.title}</h2>}
+      <div class:list={['post-list', { 'post-cards': layout === 'cards' }]}>
+        {group.items.map((post) => (
+          <article class="post-row">
+            <time class="post-date" datetime={post.published_at}>
+              {date(post.published_at)}
+            </time>
+            <div class="post-entry">
+              {post.image && (
+                <a
+                  class="post-thumbnail"
+                  href={'/posts/' + post.slug}
+                  tabindex="-1"
+                  aria-hidden="true"
+                >
+                  <img
+                    src={post.image}
+                    alt=""
+                    loading="lazy"
+                    width="72"
+                    height="48"
+                  />
+                </a>
+              )}
+              <div class="post-copy">
+                <a class="post-title" href={'/posts/' + post.slug}>
+                  {post.title}
+                </a>
+                {post.type !== 'article' && (
+                  <span class="post-kind">
+                    {post.type === 'x_post' ? '𝕏' : 'note'}
+                  </span>
+                )}
+                {layout === 'cards' && (
+                  <>
+                    <p>{post.summary}</p>
+                    <div class="tags">
+                      {post.tags.map((tag: string) => (
+                        <a href={'/tags/' + tag}>#{tag}</a>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
-            </>
-          </div>
-        </>
-      </article>
-    ))
-  }
-</div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </section>
+  ))
+}
