@@ -102,4 +102,4 @@ jq -n --rawfile body draft.md '{body: $body}' |
 unset AGENT_TOKEN
 ```
 
-The examples use process substitution supported by bash and zsh. Only the six metadata fields are returned. Send the preview link to Sergio for review; no API call can publish it.
+The examples use process substitution supported by bash and zsh. Only metadata is returned. Send the preview link to Sergio for review; no API call can publish it.
