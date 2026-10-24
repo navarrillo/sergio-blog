@@ -2,7 +2,36 @@ import { createInterface } from 'node:readline/promises';
 import { Writable } from 'node:stream';
 import argon2 from 'argon2';
 import { db } from '../src/lib/db';
-import { newTotpSecret, validTotp } from '../src/lib/auth';
+import {
+  newTotpSecret,
+  validTotp,
+  createAgentToken,
+  listAgentTokens,
+  revokeAgentToken,
+} from '../src/lib/auth';
+if (process.argv[2] === 'agent-token') {
+  const [, , , command, value, ...extra] = process.argv;
+  if (extra.length) throw new Error('Unexpected arguments');
+  if (command === 'create' && value) {
+    if (!process.stdin.isTTY || !process.stdout.isTTY)
+      throw new Error(
+        'An interactive terminal is required. Tokens must not be redirected to a file or log.',
+      );
+    const { token } = createAgentToken(value);
+    process.stdout.write(
+      'Save this token privately; it is shown only once:\n' + token + '\n',
+    );
+  } else if (command === 'list' && !value) {
+    console.table(listAgentTokens());
+  } else if (command === 'revoke' && value) {
+    if (!revokeAgentToken(value)) throw new Error('Token not found');
+    console.log('Token revoked.');
+  } else
+    throw new Error(
+      'Usage: bin/agent-token create <name> | list | revoke <name|id>',
+    );
+  process.exit(0);
+}
 if (!process.stdin.isTTY || !process.stdout.isTTY)
   throw new Error('An interactive terminal is required.');
 const output = new Writable({
