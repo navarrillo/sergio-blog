@@ -12,6 +12,8 @@ import argon2 from 'argon2';
 import { unzipSync, strFromU8 } from 'fflate';
 const root = mkdtempSync(path.join(tmpdir(), 'blog-integration-'));
 Object.assign(process.env, {
+  AGENT_API_ENABLED: 'true',
+  AGENT_TOKEN_SECRET: 'fixture-agent-secret-with-at-least-32-bytes',
   DATA_DIR: root + '/data',
   UPLOADS_DIR: root + '/uploads',
   BACKUPS_DIR: root + '/backups',
@@ -418,6 +420,16 @@ try {
     const { browserSmoke } = await import('./browser-smoke');
     await browserSmoke(base, cookie, published, image);
   }
+  const { agentIntegration } = await import('./agent-integration');
+  const agentTokens = await agentIntegration(
+    base,
+    cookie,
+    async () => {
+      await stop();
+      await start();
+    },
+    () => logs,
+  );
   const badCsrf = await get('/api/admin/post', {
     method: 'POST',
     headers: { cookie, origin: base },
@@ -537,6 +549,22 @@ try {
     'Updated body',
   );
   restored.close();
+  for (const token of agentTokens) {
+    assert(!logs.includes(token));
+    assert(
+      !JSON.stringify(
+        db().prepare('SELECT * FROM agent_tokens').all(),
+      ).includes(token),
+    );
+    for (const file of [
+      root + '/data/blog.db',
+      root + '/data/blog.db-wal',
+      dump + '/blog.db',
+      root + '/restored/data/blog.db',
+    ]) {
+      assert(!readFileSync(file).includes(Buffer.from(token)), file);
+    }
+  }
   assert(readFileSync(root + '/restored/data/blog.db').length > 0);
   console.log(
     'Integration passed: routes, editorial actions, auth/CSRF, exports, SDK MCP client, privacy, analytics outage, spoof resistance, restart, backup and restore.',

@@ -1,3 +1,4 @@
+import { slugify } from '../lib/slug';
 const body = document.querySelector<HTMLTextAreaElement>('#body');
 const slug = document.querySelector<HTMLInputElement>('#slug');
 const title = document.querySelector<HTMLInputElement>('#post-title');
@@ -6,13 +7,7 @@ slug?.addEventListener('input', () => {
   slugEdited = true;
 });
 title?.addEventListener('input', () => {
-  if (slug && !slugEdited)
-    slug.value = title.value
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '');
+  if (slug && !slugEdited) slug.value = slugify(title.value);
 });
 document
   .querySelectorAll<HTMLButtonElement>('[data-wrap],[data-prefix]')
