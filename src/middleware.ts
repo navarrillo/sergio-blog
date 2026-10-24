@@ -30,6 +30,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
       status: 429,
       headers: { 'Retry-After': '60' },
     });
+  context.locals.scriptHashes = [];
   const response = await next();
   // Security headers are owned exclusively by the application, not Caddy.
   response.headers.set('X-Content-Type-Options', 'nosniff');
@@ -41,7 +42,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   );
   response.headers.set(
     'Content-Security-Policy',
-    "default-src 'self'; script-src 'self' https://analytics.sergionavarro.me; style-src 'self'; img-src 'self' https: data:; connect-src 'self' https://analytics.sergionavarro.me; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    `default-src 'self'; script-src 'self' https://analytics.sergionavarro.me ${context.locals.scriptHashes.join(' ')}; style-src 'self'; img-src 'self' https: data:; connect-src 'self' https://analytics.sergionavarro.me; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`,
   );
   if (config.secure)
     response.headers.set('Strict-Transport-Security', 'max-age=31536000');

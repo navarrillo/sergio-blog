@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { assertBuiltHtml, assertScriptPolicy } from './csp';
 import { request as httpRequest } from 'node:http';
 import sharp from 'sharp';
 import { spawn } from 'node:child_process';
@@ -74,6 +75,7 @@ async function stop() {
 const get = (p: string, init: RequestInit = {}) =>
   fetch(base + p, { redirect: 'manual', ...init });
 try {
+  await assertBuiltHtml();
   await start();
   for (const route of [
     '/',
@@ -91,7 +93,14 @@ try {
   ]) {
     const r = await get(route);
     assert.equal(r.status, 200, route);
-    assert(!(await r.text()).includes('NEVER_EXPOSE_THIS'), route);
+    const html = await r.text();
+    assert(!html.includes('NEVER_EXPOSE_THIS'), route);
+    if (r.headers.get('content-type')?.includes('text/html'))
+      assertScriptPolicy(
+        html,
+        r.headers.get('content-security-policy') || '',
+        route,
+      );
   }
   for (const route of [
     '/posts/secret',
@@ -140,6 +149,48 @@ try {
     await get('/admin/edit?id=' + published, { headers: { cookie } })
   ).text();
   const csrf = adminHtml.match(/name="csrf" value="([^"]+)"/)![1];
+  assertScriptPolicy(
+    adminHtml,
+    (await get('/admin/edit', { headers: { cookie } })).headers.get(
+      'content-security-policy',
+    ) || '',
+    'admin editor',
+  );
+  for (const route of [
+    '/admin',
+    '/admin/projects',
+    '/admin/settings',
+    '/admin/inbox',
+    '/admin/tags',
+  ]) {
+    const response = await get(route, { headers: { cookie } });
+    assert.equal(response.status, 200, route);
+    assertScriptPolicy(
+      await response.text(),
+      response.headers.get('content-security-policy') || '',
+      route,
+    );
+  }
+  const maliciousTitle =
+    '</script><script>window.compromised=true</script><p> & café';
+  savePost({
+    title: maliciousTitle,
+    slug: 'structured-title',
+    status: 'published',
+  });
+  const structuredResponse = await get('/posts/structured-title');
+  const structuredHtml = await structuredResponse.text();
+  assertScriptPolicy(
+    structuredHtml,
+    structuredResponse.headers.get('content-security-policy') || '',
+    'article JSON-LD',
+  );
+  const jsonLd = structuredHtml.match(
+    /<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/,
+  )![1];
+  assert(!jsonLd.includes('<'));
+  assert.equal(JSON.parse(jsonLd).headline, maliciousTitle);
+
   const image = await sharp({
     create: { width: 8, height: 8, channels: 3, background: 'blue' },
   })
@@ -194,6 +245,26 @@ try {
       req.end();
     });
     assert.equal(status, 404, target);
+  }
+  if (process.env.BROWSER_SMOKE === 'true') {
+    setSetting(
+      'links',
+      JSON.stringify([
+        { label: 'Fixture outbound', url: 'https://example.invalid/outbound' },
+      ]),
+    );
+    db()
+      .prepare(
+        'INSERT INTO projects(name,description,status,url) VALUES(?,?,?,?)',
+      )
+      .run(
+        'Browser fixture',
+        'Disposable browser project',
+        'active',
+        base + '/posts/public',
+      );
+    const { browserSmoke } = await import('./browser-smoke');
+    await browserSmoke(base, cookie, published, image);
   }
   const badCsrf = await get('/api/admin/post', {
     method: 'POST',

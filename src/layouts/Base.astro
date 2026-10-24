@@ -2,6 +2,7 @@
 import '../styles/site.css';
 import { setting } from '../lib/db';
 import { config } from '../lib/config';
+import { serializeJsonLd, scriptHash } from '../lib/csp';
 const {
   title = 'Sergio Navarro',
   description = setting(
@@ -14,6 +15,19 @@ const {
 const siteTitle = setting('site_title', 'Sergio Navarro');
 const canonical = new URL(Astro.url.pathname, config.origin).href;
 const tracker = process.env.UMAMI_WEBSITE_ID;
+const structuredData = post
+  ? serializeJsonLd({
+      '@context': 'https://schema.org',
+      '@type': 'BlogPosting',
+      headline: post.title,
+      datePublished: post.published_at,
+      dateModified: post.updated_at,
+      author: { '@type': 'Person', name: 'Sergio Navarro' },
+      url: canonical,
+    })
+  : null;
+if (structuredData)
+  (Astro.locals.scriptHashes ??= []).push(scriptHash(structuredData));
 ---
 
 <!doctype html>
@@ -51,20 +65,7 @@ const tracker = process.env.UMAMI_WEBSITE_ID;
       title="Articles"
       href="/rss.xml?type=article"
     />{
-      post && (
-        <script
-          type="application/ld+json"
-          set:html={JSON.stringify({
-            '@context': 'https://schema.org',
-            '@type': 'BlogPosting',
-            headline: post.title,
-            datePublished: post.published_at,
-            dateModified: post.updated_at,
-            author: { '@type': 'Person', name: 'Sergio Navarro' },
-            url: canonical,
-          }).replaceAll('<', '\\u003c')}
-        />
-      )
+      post && <script type="application/ld+json" set:html={structuredData} />
     }</head
   ><body
     ><a class="skip" href="#main">Skip to content</a><div
