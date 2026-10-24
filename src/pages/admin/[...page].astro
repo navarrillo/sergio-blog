@@ -21,6 +21,14 @@ const post = id
       featured: false,
       published_at: null,
     };
+const creator = (tokenId: number | null | undefined) =>
+  tokenId
+    ? (
+        db()
+          .prepare('SELECT name FROM agent_tokens WHERE id=?')
+          .get(tokenId) as any
+      )?.name
+    : null;
 const revisions = id
   ? (db()
       .prepare(
@@ -166,6 +174,13 @@ if (!known.includes(page) || (page === 'edit' && !post))
                           {p.featured ? '★ ' : ''}
                           {p.title}
                         </a>
+                        {p.status === 'draft' &&
+                          creator(p.created_by_token_id) && (
+                            <small>
+                              {' '}
+                              · Created by {creator(p.created_by_token_id)}
+                            </small>
+                          )}
                       </td>
                       <td>{p.type}</td>
                       <td>
@@ -187,6 +202,11 @@ if (!known.includes(page) || (page === 'edit' && !post))
         {page === 'edit' && post && (
           <div class="editor-layout">
             <form id="post-form" method="post" action="/api/admin/post">
+              {post.status === 'draft' && creator(post.created_by_token_id) && (
+                <p>
+                  <small>Created by {creator(post.created_by_token_id)}</small>
+                </p>
+              )}
               <input type="hidden" name="csrf" value={csrf} />
               <input type="hidden" name="id" value={id || ''} />
               <label>

@@ -12,7 +12,7 @@ for (const dir of ['config', 'data', 'uploads', 'backups', 'pgdata'])
 const random = () => randomBytes(32).toString('hex');
 writeFileSync(
   dest,
-  `PUBLIC_ORIGIN=https://blog.sergionavarro.me\nCOOKIE_SECURE=true\nTRUSTED_PROXIES=\nDATA_DIR=/app/data\nUPLOADS_DIR=/app/uploads\nBACKUPS_DIR=/app/backups\nBLOG_DATA_PATH=${root}/data\nBLOG_UPLOADS_PATH=${root}/uploads\nBLOG_BACKUPS_PATH=${root}/backups\nBLOG_PORT=8010\nBLOG_IMAGE=blog:live\nDEMO_MODE=false\nSESSION_SECRET=${random()}\nCSRF_SECRET=${random()}\nUMAMI_INTERNAL_URL=http://umami:3000\nUMAMI_USERNAME=\nUMAMI_PASSWORD=\nUMAMI_WEBSITE_ID=\nUMAMI_APP_SECRET=${random()}\nUMAMI_TWO_FACTOR_KEY=${random()}\nUMAMI_DB_PASSWORD=${random()}\nUMAMI_PGDATA_PATH=${root}/pgdata\nUMAMI_BACKUPS_PATH=${root}/backups\nUMAMI_PORT=8011\n`,
+  `PUBLIC_ORIGIN=https://blog.sergionavarro.me\nCOOKIE_SECURE=true\nTRUSTED_PROXIES=\nDATA_DIR=/app/data\nUPLOADS_DIR=/app/uploads\nBACKUPS_DIR=/app/backups\nBLOG_DATA_PATH=${root}/data\nBLOG_UPLOADS_PATH=${root}/uploads\nBLOG_BACKUPS_PATH=${root}/backups\nBLOG_PORT=8010\nBLOG_IMAGE=blog:live\nDEMO_MODE=false\nSESSION_SECRET=${random()}\nCSRF_SECRET=${random()}\nAGENT_API_ENABLED=false\nAGENT_TOKEN_SECRET=${random()}\nUMAMI_INTERNAL_URL=http://umami:3000\nUMAMI_USERNAME=\nUMAMI_PASSWORD=\nUMAMI_WEBSITE_ID=\nUMAMI_APP_SECRET=${random()}\nUMAMI_TWO_FACTOR_KEY=${random()}\nUMAMI_DB_PASSWORD=${random()}\nUMAMI_PGDATA_PATH=${root}/pgdata\nUMAMI_BACKUPS_PATH=${root}/backups\nUMAMI_PORT=8011\n`,
   { mode: 0o600, flag: 'wx' },
 );
 console.log(

@@ -10,6 +10,14 @@ export const onRequest = defineMiddleware(async (context, next) => {
   } catch {
     return new Response('Invalid path', { status: 400 });
   }
+  if (
+    (path === '/api/agent' || path.startsWith('/api/agent/')) &&
+    process.env.AGENT_API_ENABLED !== 'true'
+  )
+    return new Response('Not found', {
+      status: 404,
+      headers: { 'Cache-Control': 'no-store' },
+    });
   context.locals.ip = clientIP(context.clientAddress, context.request.headers);
   if (path.startsWith('/admin') || path.startsWith('/api/admin')) {
     context.locals.session = session(context.request);
@@ -46,7 +54,11 @@ export const onRequest = defineMiddleware(async (context, next) => {
   );
   if (config.secure)
     response.headers.set('Strict-Transport-Security', 'max-age=31536000');
-  if (path.startsWith('/admin') || path.startsWith('/api/admin')) {
+  if (
+    path.startsWith('/admin') ||
+    path.startsWith('/api/admin') ||
+    path.startsWith('/api/agent')
+  ) {
     response.headers.set('Cache-Control', 'no-store');
     response.headers.set('X-Robots-Tag', 'noindex, nofollow');
   }

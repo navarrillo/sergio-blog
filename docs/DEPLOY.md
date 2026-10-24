@@ -20,7 +20,7 @@ bin/setup /home/deploy/apps/blog
 bin/setup /home/deploy/apps/umami
 ```
 
-Setup refuses to overwrite existing config, generates random session/CSRF/Umami/database/2FA secrets, and writes `config/.env` with permissions 600. Keep this file outside Git and include it in encrypted backups. For the blog, set `PUBLIC_ORIGIN=https://blog.sergionavarro.me`, `COOKIE_SECURE=true`, and `DEMO_MODE=false`. Keep `DATA_DIR`, `UPLOADS_DIR`, and `BACKUPS_DIR` as container paths `/app/{data,uploads,backups}`. `BLOG_*_PATH` variables are absolute host bind paths. The second setup also creates unused generic blog directories; only pgdata/config/backups are needed by Umami.
+Setup refuses to overwrite existing config, generates random session/CSRF/agent-token/Umami/database/2FA secrets, and writes `config/.env` with permissions 600. Keep this file outside Git and include it in encrypted backups. For the blog, set `PUBLIC_ORIGIN=https://blog.sergionavarro.me`, `COOKIE_SECURE=true`, and `DEMO_MODE=false`. Keep `DATA_DIR`, `UPLOADS_DIR`, and `BACKUPS_DIR` as container paths `/app/{data,uploads,backups}`. `BLOG_*_PATH` variables are absolute host bind paths. The second setup also creates unused generic blog directories; only pgdata/config/backups are needed by Umami.
 
 Make blog data/uploads/backups writable by container UID/GID **1000:1000** and the Umami pgdata directory writable by PostgreSQL **999:999**:
 
@@ -121,7 +121,7 @@ fail2ban-regex deploy/fail2ban/examples.log deploy/fail2ban/blog.conf
 fail2ban-regex deploy/fail2ban/examples.log deploy/fail2ban/umami.conf
 ```
 
-Each fixture should match exactly one failure and ignore the successful 303 response. Confirm with actual host journal samples before enabling the jails.
+The blog filter should match three failures (admin login, agent access in Caddy, and the app-format agent failure); the Umami filter should match one. Ignore the successful 303 and valid-token quota 429 fixtures. Confirm with actual host journal samples before enabling the jails.
 
 ## 5. Backups before existing nightly restic
 
@@ -219,3 +219,19 @@ exec "$@"
 ```
 
 Save the wrapper outside the checkout, make it executable, and invoke it with the original checkout helper path, for example `node24-wrapper /path/to/checkout/bin/deploy main`. Set `BLOG_ENV` as usual. The wrapper adds no deployment automation and does not weaken the repository's runtime check.
+
+## Optional private agent drafts API
+
+`AGENT_API_ENABLED=false` is the default. Every `/api/agent/*` route returns 404 until explicitly enabled. `bin/setup` generates a separate random `AGENT_TOKEN_SECRET` (32 random bytes encoded as hex), even while the feature is disabled. Existing installations must add this secret privately to `config/.env` before enabling the API; generate it in the configuration file with a secret manager or a private editor, never shell history or application logs. The application requires at least 32 bytes and fails closed if the enabled API lacks a valid secret. Keep the same secret across container recreations. Changing it invalidates every token. Store the configuration only in encrypted operator backups.
+
+Set `AGENT_API_ENABLED=true` and recreate the blog container during the manual deployment. Compose already passes the env file to the application. Run the additive migration through the normal deployment flow; version 2 adds a token table, nullable post ownership and a sticky status-change trigger. The previous release can still read/write this schema: existing columns and contracts are unchanged. Run [token management](AGENT_API.md) through the container's interactive terminal. Agent tokens never authenticate to the admin; publishing still requires Sergio's password and TOTP.
+
+Failed bearer attempts consume a persisted, real-client-IP budget (20 per 10 minutes) and emit this fixed line, without credentials or request contents:
+
+```text
+blog-agent-auth-failed ip=192.0.2.21
+```
+
+`deploy/fail2ban/blog.conf` matches this format and agent 401 access events in the existing Caddy journal. The default blog jail reads only `_SYSTEMD_UNIT=caddy.service`: Caddy 401 events provide bans without changing Docker's `json-file` logger. Application stdout is available through `docker compose logs blog`; the app-format regex is also ready for operators who separately forward those lines into their monitored journal. Do not add a second jail reading the same requests. Agent quota 429 access events deliberately do not match the Caddy agent pattern, so a valid token exhausting its hourly allowance does not trigger an IP ban. The first 20 bad bearer attempts return 401; further failures return 429 with Retry-After. Verify the journal's real client addresses after setting `TRUSTED_PROXIES`, as described above.
+
+Successful calls log a single JSON record after `blog-agent-call`, containing token **name**, method, pathname (no query string), draft ID and HTTP status. Neither Markdown nor bearer values are logged. Public exports omit the token table. SQLite backups contain only token hashes and metadata; tokens are never recoverable from them. Use HTTPS outside local development and ensure any upstream HTTP debugging/access logging also redacts Authorization.

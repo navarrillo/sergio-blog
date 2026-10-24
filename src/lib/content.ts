@@ -44,6 +44,15 @@ function hydrate(row: any) {
     ? { ...row, tags: JSON.parse(row.tags), featured: Boolean(row.featured) }
     : undefined;
 }
+function publicPost(row: any) {
+  if (!row) return undefined;
+  const {
+    created_by_token_id: _owner,
+    agent_access_revoked_at: _revoked,
+    ...post
+  } = hydrate(row);
+  return post;
+}
 export function renderMarkdown(body: string) {
   return sanitize(marked.parse(body, { async: false }) as string, {
     allowedTags: sanitize.defaults.allowedTags.concat(['img']),
@@ -66,7 +75,7 @@ export function plain(body: string) {
   });
 }
 export const getPost = (slug: string) =>
-  hydrate(
+  publicPost(
     db()
       .prepare(
         "SELECT * FROM posts WHERE slug=? AND status='published' AND published_at<=?",
@@ -135,7 +144,7 @@ export function queryPosts(params: URLSearchParams) {
       `SELECT p.* FROM posts p ${join} WHERE ${where.join(' AND ')} ORDER BY p.published_at DESC,p.id DESC LIMIT ?`,
     )
     .all(...values, limit + 1)
-    .map(hydrate);
+    .map(publicPost);
   const hasMore = rows.length > limit;
   const items = rows.slice(0, limit);
   const last = items.at(-1);
