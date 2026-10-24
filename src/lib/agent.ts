@@ -136,3 +136,78 @@ export function agentReply(post: ReturnType<typeof getDraft>) {
     updated_at: post.updated_at,
   };
 }
+
+const listQuery = z
+  .object({
+    limit: z
+      .string()
+      .regex(/^[1-9][0-9]?$/)
+      .transform(Number)
+      .refine((n) => n <= 50)
+      .optional(),
+    cursor: z
+      .string()
+      .min(1)
+      .max(512)
+      .regex(/^[A-Za-z0-9_-]+$/)
+      .optional(),
+  })
+  .strict();
+export function listAgentDrafts(params: URLSearchParams, token: AgentToken) {
+  try {
+    for (const key of params.keys())
+      if (params.getAll(key).length !== 1)
+        throw new Error('Duplicate query parameter');
+    const query = listQuery.parse(Object.fromEntries(params));
+    const limit = query.limit ?? 20;
+    const values: (string | number)[] = [token.id];
+    let cursorWhere = '';
+    if (query.cursor) {
+      const bytes = Buffer.from(query.cursor, 'base64url');
+      if (bytes.toString('base64url') !== query.cursor)
+        throw new Error('Invalid cursor');
+      const [date, id] = z
+        .tuple([
+          z.iso.datetime(),
+          z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+        ])
+        .parse(JSON.parse(bytes.toString('utf8')));
+      if (new Date(date).toISOString() !== date)
+        throw new Error('Invalid cursor date');
+      cursorWhere = ' AND (p.updated_at<? OR (p.updated_at=? AND p.id<?))';
+      values.push(date, date, id);
+    }
+    const rows = db()
+      .prepare(
+        `SELECT p.id,p.title,p.slug,p.updated_at FROM posts p JOIN agent_tokens t ON t.id=p.created_by_token_id
+      WHERE t.id=? AND t.revoked_at IS NULL AND p.status='draft' AND p.agent_access_revoked_at IS NULL
+      ${cursorWhere} ORDER BY p.updated_at DESC,p.id DESC LIMIT ?`,
+      )
+      .all(...values, limit + 1) as any[];
+    const items = rows
+      .slice(0, limit)
+      .map((post) => ({ ...post, preview_url: '/admin/edit?id=' + post.id }));
+    const last = items.at(-1);
+    return {
+      items,
+      next_cursor:
+        rows.length > limit
+          ? Buffer.from(JSON.stringify([last!.updated_at, last!.id])).toString(
+              'base64url',
+            )
+          : null,
+    };
+  } catch {
+    throw new AgentError(400, 'Invalid query');
+  }
+}
+export function agentReadReply(post: ReturnType<typeof ownedDraft>) {
+  return {
+    ...agentReply(post),
+    title: post.title,
+    summary: post.summary,
+    body: post.body,
+    tags: post.tags,
+    type: post.type,
+  };
+}

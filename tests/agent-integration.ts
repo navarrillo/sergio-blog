@@ -284,6 +284,8 @@ export async function agentIntegration(
       404,
     );
   }
+  const { agentReading } = await import('./agent-reading');
+  tokens.push(await agentReading(base, foreign.id, adminId));
   const count = () =>
     Number(
       (
@@ -303,6 +305,10 @@ export async function agentIntegration(
     Object.keys(draft).sort(),
   );
   assert.equal(count(), before + 1);
+  assert.equal(
+    (await (await api('/' + draft.id)).json()).body,
+    'AGENT_REVISED_MARKDOWN',
+  );
   assert.equal(getDraft(draft.id).summary, input.summary);
   assert.equal(getDraft(draft.id).status, 'draft');
   assert.equal(
@@ -338,6 +344,11 @@ export async function agentIntegration(
   });
   assert.equal(publish.status, 303);
   assert.equal(getDraft(draft.id).status, 'published');
+  assert(
+    !(await (await api('?limit=50')).json()).items.some(
+      (p: any) => p.id === draft.id,
+    ),
+  );
   assert.equal((await api('/' + draft.id)).status, 404);
   assert.equal(
     (await api('/' + draft.id, 'PATCH', { title: 'Take back' })).status,
@@ -365,37 +376,9 @@ export async function agentIntegration(
   );
   assert(getDraft(foreign.id).agent_access_revoked_at);
 
-  // Independent, persisted write/read budgets, including rejected valid-token writes.
-  const rate = createAgentToken('Rate test');
-  tokens.push(rate.token);
-  const limitedDraft = await (
-    await api('', 'POST', { title: 'Rate draft' }, rate.token)
-  ).json();
-  for (let i = 1; i < 30; i++)
-    assert.equal((await api('', 'POST', {}, rate.token)).status, 400);
-  let limited = await api('', 'POST', { title: 'Blocked' }, rate.token);
-  assert.equal(limited.status, 429);
-  assert(Number(limited.headers.get('retry-after')) > 0);
-  assert.equal(
-    (await api('', 'POST', { title: 'Different token' }, b.token)).status,
-    201,
-  );
-  for (let i = 0; i < 120; i++)
-    assert.equal(
-      (await api('/' + limitedDraft.id, 'GET', undefined, rate.token)).status,
-      200,
-    );
-  assert.equal(
-    (await api('/' + limitedDraft.id, 'GET', undefined, rate.token)).status,
-    429,
-  );
-  await restart();
-  limited = await api('', 'POST', { title: 'Still blocked' }, rate.token);
-  assert.equal(limited.status, 429);
-  assert.equal(
-    (await api('/' + limitedDraft.id, 'GET', undefined, rate.token)).status,
-    429,
-  );
+  const { agentBudgets } = await import('./agent-budgets');
+  const { rate, limitedDraft, other } = await agentBudgets(base, restart);
+  tokens.push(rate.token, other.token);
   reset();
   for (let i = 0; i < 21; i++) {
     const r = await request('/api/agent/v1/drafts', {
@@ -545,6 +528,7 @@ export async function agentIntegration(
     '/api/agent',
     '/api/agent/',
     '/api/agent/v1/drafts',
+    '/api/agent/v1/drafts?limit=50',
     '/api/agent/v1/drafts/' + draft.id,
     '/api/agent/v2/anything',
     '/%61pi/agent/v1/drafts',
