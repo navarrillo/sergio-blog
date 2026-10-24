@@ -1,3 +1,6 @@
 Oct 22 10:00:00 host caddy[123]: {"level":"info","request":{"remote_ip":"192.0.2.10","method":"POST","host":"blog.example.com","uri":"/api/admin/login"},"status":401}
 Oct 22 10:00:01 host caddy[123]: {"level":"info","request":{"remote_ip":"192.0.2.11","method":"POST","host":"analytics.example.com","uri":"/api/auth/login"},"status":429}
 Oct 22 10:00:02 host caddy[123]: {"level":"info","request":{"remote_ip":"192.0.2.12","method":"POST","uri":"/api/admin/login"},"status":303}
+Oct 24 12:00:00 host caddy[123]: {"level":"info","request":{"remote_ip":"192.0.2.20","method":"PATCH","uri":"/api/agent/v1/drafts/42"},"status":401}
+Oct 24 12:00:01 host blog[456]: blog-agent-auth-failed ip=192.0.2.21
+Oct 24 12:00:02 host caddy[123]: {"level":"info","request":{"remote_ip":"192.0.2.22","method":"POST","uri":"/api/agent/v1/drafts"},"status":429}
