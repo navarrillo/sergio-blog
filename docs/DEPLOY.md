@@ -24,11 +24,20 @@ Setup refuses to overwrite existing config, generates random session/CSRF/Umami/
 
 Make blog data/uploads/backups writable by container UID/GID **1000:1000** and the Umami pgdata directory writable by PostgreSQL **999:999**:
 
+The deploy user only needs Docker access; these ownership changes do not require host sudo. Set the two application roots to the directories prepared above (not the repository checkout):
+
 ```sh
-sudo chown -R 1000:1000 /home/deploy/apps/blog/{data,uploads,backups}
-sudo chown -R 999:999 /home/deploy/apps/umami/pgdata
-chmod 700 /home/deploy/apps/blog/{data,uploads,backups}
-chmod 600 /home/deploy/apps/{blog,umami}/config/.env
+BLOG_ROOT=/absolute/path/to/blog
+UMAMI_ROOT=/absolute/path/to/umami
+for directory in data uploads backups; do
+  docker run --rm --network none --user 0:0 \
+    --mount "type=bind,source=$BLOG_ROOT/$directory,target=/d" \
+    alpine:3.24.1 sh -ec 'chown -R 1000:1000 /d; chmod 700 /d'
+done
+docker run --rm --network none --user 0:0 \
+  --mount "type=bind,source=$UMAMI_ROOT/pgdata,target=/d" \
+  alpine:3.24.1 sh -ec 'chown -R 999:999 /d; chmod 700 /d'
+chmod 600 "$BLOG_ROOT/config/.env" "$UMAMI_ROOT/config/.env"
 ```
 
 The deploy account must be able to run Docker. Host `bin/` can contain symlinks to the checkout scripts; the operator should run scripts from the checkout or symlink their containing directory consistently. Scripts that determine the repo from their own path should be invoked through the original checkout path.
@@ -64,13 +73,32 @@ Empty storage is initialized through an explicit migration at startup; no demo c
 
 ## 3. Real client IP and initial administrator
 
-Inspect the blog default network gateway:
+Check proxy trust **after the first start**, using the TCP peer address of a real HTTPS request. The first deployment arrived through the shared `blog-analytics` gateway. Docker may select a different attached network after recreation, so do not infer the peer from a preferred/default network name.
+
+First list the running blog container's attached networks and their current gateways:
 
 ```sh
-docker network inspect blog_default --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
+blog_container=$(docker compose --env-file "$BLOG_ENV" ps -q blog)
+docker inspect "$blog_container" --format '{{range $name, $network := .NetworkSettings.Networks}}{{printf "%s gateway=%s\n" $name $network.Gateway}}{{end}}'
 ```
 
-Set that exact address in the blog env file's `TRUSTED_PROXIES`. Include only actual proxy peers; the default is empty and trusts no forwarding headers. Caddy overwrites `X-Forwarded-For` and `X-Real-IP` with its TCP client address. The Node launcher strips forwarding headers from every untrusted socket **before Astro processes them**. Never start `dist/server/entry.mjs` directly. After changing trust or secrets, recreate the blog container.
+Once the Caddy reverse proxy from section 4 is active, make a real request through it, then observe established connections in that container's network namespace. The diagnostic container shares the network only, mounts no application data, publishes no ports and changes no Caddy configuration:
+
+```sh
+curl --fail --silent --output /dev/null https://blog.sergionavarro.me/healthz
+docker run --rm --network "container:$blog_container" alpine:3.24.1 netstat -tn
+```
+
+For the connection whose **local** port is 8080, the **foreign address** is the peer the Node launcher receives (not the visitor IP carried in forwarding headers). Repeat while making the request if no established connection is visible. Match that peer against the discovered gateway addresses.
+
+Recommended setting: include **both** current gateway addresses for the blog's private bridge and `blog-analytics` in the comma-separated `TRUSTED_PROXIES` list. This covers either network being chosen during container recreation. Generate the candidate list without copying fixed addresses into the runbook:
+
+```sh
+docker inspect "$blog_container" --format '{{range .NetworkSettings.Networks}}{{println .Gateway}}{{end}}' \
+  | awk 'NF' | sort -u | paste -sd, -
+```
+
+Verify that the output contains only the two expected, host-controlled Docker gateways and includes the observed peer; then save it as `TRUSTED_PROXIES` in the private env file. Recheck after network recreation. Do not add visitor addresses, arbitrary subnets, or gateways from unrelated networks. The default is empty and trusts no forwarding headers. Caddy overwrites `X-Forwarded-For` and `X-Real-IP` with its TCP client address. The Node launcher strips forwarding headers from untrusted sockets **before Astro processes them**. Never start `dist/server/entry.mjs` directly. After changing trust or secrets, recreate the blog container.
 
 Use an interactive terminal, without `-T`, to create the administrator:
 
@@ -177,3 +205,17 @@ Official advisory: https://nodejs.org/en/blog/vulnerability/october-2026-securit
 Images are served by the app at `/uploads/<hex-or-hyphen-name>.webp`, from the uploads bind mount, with WebP content type, nosniff and immutable caching. The Node launcher rejects noncanonical/traversal upload targets before URL normalization; the file route rejects symlinks, directories and other extensions. Caddy needs no uploads filesystem access. The root `.gitignore` uploads entry deliberately does not ignore the source route.
 
 Builds emit JavaScript and stylesheets as external assets. Inline JSON-LD retains its original JSON value, escapes `<` to `\u003c`, and receives an exact per-response SHA-256 CSP hash. No unsafe-inline is permitted. Run `npm run test:browser` after installing Chromium with `npx playwright install chromium` to verify the editor and events under the production CSP. GitHub CI runs the browser smoke too. Blog security headers stay in the application; Umami HSTS/nosniff/referrer/frame headers belong to `deploy/umami.caddy`, with a frame-ancestors-only CSP that does not interfere with its application scripts.
+
+## User-local Node for host helpers
+
+Host helpers still require Node >=24.22.1 <25. If Node is installed in a user-local directory, a small wrapper can select it without sudo or global installation changes:
+
+```sh
+#!/bin/sh
+set -eu
+: "${BLOG_NODE_BIN:?Set this to the directory containing your user-local Node 24 executables}"
+export PATH="$BLOG_NODE_BIN:$PATH"
+exec "$@"
+```
+
+Save the wrapper outside the checkout, make it executable, and invoke it with the original checkout helper path, for example `node24-wrapper /path/to/checkout/bin/deploy main`. Set `BLOG_ENV` as usual. The wrapper adds no deployment automation and does not weaken the repository's runtime check.
