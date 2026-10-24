@@ -3,6 +3,7 @@ import './check-node.mjs';
 // before Astro inspects forwarding headers. Never infer trust from Host headers.
 import { createServer } from 'node:http';
 import { isIP } from 'node:net';
+import { rejectsUploadPath } from '../src/lib/upload-path.mjs';
 if (
   process.env.COOKIE_SECURE !== 'false' &&
   (!process.env.SESSION_SECRET || !process.env.CSRF_SECRET)
@@ -17,6 +18,14 @@ const trusted = (process.env.TRUSTED_PROXIES || '')
   .map((v) => v.trim())
   .filter(Boolean);
 const server = createServer((request, response) => {
+  if (rejectsUploadPath(request.url || '/')) {
+    response.writeHead(404, {
+      'Content-Type': 'text/plain',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    response.end('Not found');
+    return;
+  }
   const peer = (request.socket.remoteAddress || 'unknown').replace(
     /^::ffff:/,
     '',

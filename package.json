@@ -18,7 +18,8 @@
     "demo": "node --import tsx bin/demo.ts",
     "migrate": "node --import tsx bin/migrate.ts",
     "backup": "node --import tsx bin/storage.ts backup",
-    "restore": "node --import tsx bin/storage.ts restore"
+    "restore": "node --import tsx bin/storage.ts restore",
+    "test:browser": "BROWSER_SMOKE=true node --import tsx tests/integration.ts"
   },
   "dependencies": {
     "@astrojs/node": "11.1.9",
@@ -34,10 +35,12 @@
   },
   "devDependencies": {
     "@astrojs/check": "0.9.12",
+    "@playwright/test": "1.64.1",
     "@types/node": "24.10.1",
     "@types/sanitize-html": "2.16.0",
     "eslint": "9.39.1",
     "lighthouse": "13.5.0",
+    "parse5": "8.0.0",
     "prettier": "3.8.3",
     "prettier-plugin-astro": "0.14.1",
     "typescript": "5.9.3",

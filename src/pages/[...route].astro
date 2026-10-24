@@ -34,7 +34,7 @@ const missing =
 if (missing) Astro.response.status = 404;
 const filters = new URLSearchParams(Astro.url.searchParams);
 if (parts[0] === 'tags') filters.set('tag', parts[1]);
-if (isHome) filters.set('limit', '6');
+if (isHome) filters.set('limit', '20');
 let result = { items: [] as any[], next_cursor: null as string | null };
 let queryError = false;
 if (isHome || isArchive) {
@@ -63,186 +63,170 @@ const title = missing
         : isProjects
           ? 'Projects'
           : isStats
-            ? 'In numbers'
-            : 'Open by design');
+            ? 'Stats'
+            : 'API & MCP');
 const next = new URL(Astro.url);
 if (result.next_cursor) next.searchParams.set('cursor', result.next_cursor);
 const photo = setting('photo');
 const links = JSON.parse(setting('links', '[]'));
+const layout =
+  Astro.url.searchParams.get('layout') === 'cards' ? 'cards' : 'list';
+const isFiltered = ['q', 'type', 'tag', 'cursor'].some(
+  (key) => filters.has(key) && filters.get(key),
+);
+function viewLink(key: string, value: string) {
+  const params = new URLSearchParams(Astro.url.searchParams);
+  params.delete('cursor');
+  if (parts[0] === 'tags') params.set('tag', parts[1]);
+  if (value) params.set(key, value);
+  else params.delete(key);
+  return '/posts' + (params.size ? '?' + params : '');
+}
 ---
 
 <Base title={title} post={post} description={post?.summary}>
   {
     isHome && (
-      <>
-        <section class="intro">
-          <div>
-            <>
-              <div class="eyebrow">
-                <span class="status-dot" /> A PERSONAL CORNER OF THE INTERNET
-              </div>
-              <h1>
-                Ideas, experiments,
-                <br />
-                and things I’m building<span class="accent">.</span>
-              </h1>
-              <p class="lead">
-                {setting(
-                  'bio',
-                  'A place for articles, short notes, and projects. Written by Sergio Navarro.',
-                )}
-              </p>
-              <div class="intro-links">
-                <a class="text-link" href="/posts">
-                  Explore the writing <span>↗</span>
-                </a>
-                {links.map((l: any) => (
-                  <a href={l.url} rel="noopener noreferrer" data-outbound>
-                    {l.label} ↗
-                  </a>
-                ))}
-              </div>
-            </>
-          </div>
-          {photo ? (
-            <img
-              class="portrait"
-              src={photo}
-              width="132"
-              height="156"
-              alt="Sergio Navarro"
-            />
-          ) : (
-            <div class="portrait-placeholder" aria-hidden="true">
-              S<span>N</span>
-              <i>FIELD NOTES</i>
-            </div>
-          )}
-        </section>
-        {featured.length > 0 && (
-          <section class="featured-section">
-            <div class="section-label">
-              <h2>Selected writing</h2>
-              <span>START HERE</span>
-            </div>
-            <div class="featured-grid">
-              {featured.map((p: any) => (
-                <a class="featured-card" href={'/posts/' + p.slug}>
-                  <span class="eyebrow">{p.tags[0] || p.type}</span>
-                  <h3>{p.title}</h3>
-                  <p>{p.summary}</p>
-                  <span class="card-arrow" aria-hidden="true">
-                    ↗
-                  </span>
+      <section class="intro">
+        {photo && (
+          <img
+            class="portrait"
+            src={photo}
+            width="64"
+            height="64"
+            alt="Sergio Navarro"
+          />
+        )}
+        <div>
+          <h1>Hi, I’m Sergio Navarro.</h1>
+          <p>
+            {setting(
+              'bio',
+              'I write about the things I’m building, learning, and thinking about.',
+            )}
+          </p>
+          {links.length > 0 && (
+            <div class="intro-links">
+              {links.map((link: any) => (
+                <a href={link.url} rel="noopener noreferrer" data-outbound>
+                  {link.label}
                 </a>
               ))}
             </div>
-          </section>
-        )}
-        <section>
-          <div class="section-label">
-            <>
-              <h2>Latest entries</h2>
-              <a href="/posts">View archive ↗</a>
-            </>
-          </div>
-          {result.items.length ? (
-            <PostList posts={result.items} />
-          ) : (
-            <div class="empty">
-              <h3>A fresh page.</h3>
-              <p>The first entry will appear here when it is published.</p>
-            </div>
           )}
-        </section>
-        <section class="project-teaser">
-          <>
-            <div>
-              <>
-                <span class="eyebrow">FROM IDEA TO SOMETHING REAL</span>
-                <h2>Always a work in progress.</h2>
-                <p>
-                  A collection of projects, experiments, and things made along
-                  the way.
-                </p>
-              </>
-            </div>
-            <a class="button secondary" href="/projects">
-              Explore projects ↗
-            </a>
-          </>
-        </section>
-      </>
+        </div>
+      </section>
     )
   }
   {
-    isArchive && (
+    (isHome || isArchive) && (
       <>
+        <div class="archive-controls">
+          <nav aria-label="Filter writing">
+            <span>Filter:</span>
+            {[
+              ['', 'all'],
+              ['article', 'articles'],
+              ['note', 'notes'],
+              ['x_post', 'X posts'],
+            ].map(([value, label]) => (
+              <a
+                href={viewLink('type', value)}
+                aria-current={
+                  (filters.get('type') || '') === value ? 'page' : undefined
+                }
+              >
+                {label}
+              </a>
+            ))}
+          </nav>
+          <nav aria-label="Archive layout">
+            <span>Layout:</span>
+            <a
+              href={viewLink('layout', 'list')}
+              aria-current={layout === 'list' ? 'page' : undefined}
+            >
+              list
+            </a>
+            <a
+              href={viewLink('layout', 'cards')}
+              aria-current={layout === 'cards' ? 'page' : undefined}
+            >
+              cards
+            </a>
+          </nav>
+        </div>
         <form class="filters" method="get" action="/posts" role="search">
-          <>
-            <label class="search-label">
-              <>
-                <span class="sr-only">Search writing</span>
-                <input
-                  type="search"
-                  name="q"
-                  placeholder="Search the archive…"
-                  value={filters.get('q') || ''}
-                />
-              </>
-            </label>
-            <label>
-              <>
-                <span class="sr-only">Post type</span>
-                <select name="type">
-                  <option value="">All types</option>
-                  {['article', 'note', 'x_post'].map((t) => (
-                    <option selected={filters.get('type') === t} value={t}>
-                      {t === 'x_post' ? 'From X' : t}
-                    </option>
-                  ))}
-                </select>
-              </>
-            </label>
-            <label>
-              <>
-                <span class="sr-only">Tag</span>
-                <select name="tag">
-                  <option value="">All topics</option>
-                  {allTags.map((t) => (
-                    <option
-                      selected={filters.get('tag') === t.tag}
-                      value={t.tag}
-                    >
-                      {t.tag} ({t.count})
-                    </option>
-                  ))}
-                </select>
-              </>
-            </label>
-            <button type="submit">Search</button>
-          </>
+          <label class="search-label">
+            <>
+              <span class="sr-only">Search writing</span>
+              <input
+                type="search"
+                name="q"
+                placeholder="Search all posts…"
+                value={filters.get('q') || ''}
+              />
+            </>
+          </label>
+          {filters.get('type') && (
+            <input type="hidden" name="type" value={filters.get('type')!} />
+          )}
+          {layout === 'cards' && (
+            <input type="hidden" name="layout" value="cards" />
+          )}
+          <label class="tag-filter">
+            <>
+              <span class="sr-only">Tag</span>
+              <select name="tag">
+                <option value="">All topics</option>
+                {allTags.map((tag) => (
+                  <option
+                    selected={filters.get('tag') === tag.tag}
+                    value={tag.tag}
+                  >
+                    {tag.tag} ({tag.count})
+                  </option>
+                ))}
+              </select>
+            </>
+          </label>
+          <button type="submit">Search</button>
         </form>
+        {isHome && !isFiltered && featured.length > 0 && (
+          <section class="pinned-posts" aria-labelledby="pinned-title">
+            <h2 id="pinned-title">Pinned</h2>
+            <PostList posts={featured} layout={layout} />
+          </section>
+        )}
+        {isArchive && (
+          <h1 class="archive-title">
+            {parts[0] === 'tags'
+              ? '#' + parts[1]
+              : filters.get('q')
+                ? 'Search results'
+                : 'All writing'}
+          </h1>
+        )}
         {queryError ? (
           <p role="alert">
             Invalid search parameters. <a href="/posts">Reset search</a>
           </p>
         ) : result.items.length ? (
-          <PostList posts={result.items} />
+          <PostList posts={result.items} grouped layout={layout} />
         ) : (
           <div class="empty" data-no-results>
-            <h2>No entries found.</h2>
+            <h2>{isFiltered ? 'No posts found.' : 'No posts yet.'}</h2>
             <p>
-              Try another search or <a href="/posts">browse all writing</a>.
+              {isFiltered
+                ? 'Try another search or browse all writing.'
+                : 'The first post will appear here when it is published.'}
             </p>
+            {isFiltered && <a href="/posts">Clear filters</a>}
           </div>
         )}
         {result.next_cursor && (
-          <a
-            class="button secondary pagination"
-            href={next.pathname + next.search}
-          >
-            Older entries ↓
+          <a class="pagination" href={next.pathname + next.search}>
+            Older posts →
           </a>
         )}
       </>
@@ -299,6 +283,7 @@ const links = JSON.parse(setting('links', '[]'));
   {
     isProjects && (
       <>
+        <h1>Projects</h1>
         <div class="projects-grid">
           {allProjects.map((p) => (
             <article class="project-card">
@@ -344,10 +329,7 @@ const links = JSON.parse(setting('links', '[]'));
         <>
           <section class="page-heading">
             <>
-              <span class="eyebrow">A SMALL, GROWING BODY OF WORK</span>
-              <h1>
-                In numbers<span class="accent">.</span>
-              </h1>
+              <h1>Stats</h1>
               <p>Writing activity and the topics that connect it.</p>
             </>
           </section>
@@ -408,10 +390,7 @@ const links = JSON.parse(setting('links', '[]'));
         <>
           <section class="page-heading">
             <>
-              <span class="eyebrow">FOR READERS, DEVELOPERS, AND AGENTS</span>
-              <h1>
-                Open by design<span class="accent">.</span>
-              </h1>
+              <h1>API &amp; MCP</h1>
               <p>
                 Read published writing through a small, public API. No key
                 needed.
