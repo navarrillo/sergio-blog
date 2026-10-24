@@ -133,6 +133,94 @@ try {
     ).status,
     401,
   );
+  const badLoginBodies: {
+    name: string;
+    contentType?: string;
+    body?: string;
+    status: number;
+  }[] = [
+    {
+      name: 'JSON',
+      contentType: 'application/json',
+      body: '{"password":"anything","code":"123456"}',
+      status: 415,
+    },
+    { name: 'empty body', status: 400 },
+    {
+      name: 'empty form',
+      contentType: 'application/x-www-form-urlencoded',
+      body: '',
+      status: 400,
+    },
+    {
+      name: 'broken multipart',
+      contentType: 'multipart/form-data; boundary=broken',
+      body: '--broken\r\ninvalid-part',
+      status: 400,
+    },
+    {
+      name: 'missing boundary',
+      contentType: 'multipart/form-data',
+      body: 'malformed',
+      status: 400,
+    },
+    {
+      name: 'missing password',
+      contentType: 'application/x-www-form-urlencoded',
+      body: 'code=123456',
+      status: 400,
+    },
+    {
+      name: 'missing code',
+      contentType: 'application/x-www-form-urlencoded',
+      body: 'password=anything',
+      status: 400,
+    },
+    {
+      name: 'malformed form field',
+      contentType: 'application/x-www-form-urlencoded',
+      body: 'password=anything&code=%E0%A4%A',
+      status: 400,
+    },
+    {
+      name: 'duplicate code',
+      contentType: 'application/x-www-form-urlencoded',
+      body: 'password=anything&code=123456&code=123456',
+      status: 400,
+    },
+  ];
+  for (const requestOrigin of [base, undefined]) {
+    for (const invalid of badLoginBodies) {
+      // Isolate the persisted limiter for each class of invalid input in this disposable DB.
+      db().prepare('DELETE FROM limits WHERE key=?').run('login:127.0.0.1');
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const response = await get('/api/admin/login', {
+          method: 'POST',
+          headers: {
+            ...(requestOrigin ? { origin: requestOrigin } : {}),
+            ...(invalid.contentType
+              ? { 'content-type': invalid.contentType }
+              : {}),
+          },
+          body: invalid.body,
+        });
+        assert.equal(response.status, invalid.status, invalid.name);
+        assert.equal(await response.text(), 'Unable to sign in', invalid.name);
+      }
+      const limited = await get('/api/admin/login', {
+        method: 'POST',
+        headers: { origin: base },
+        body: new URLSearchParams({ password: 'wrong', code: '123456' }),
+      });
+      assert.equal(
+        limited.status,
+        429,
+        invalid.name + ' must consume the login budget',
+      );
+      assert.equal(await limited.text(), 'Unable to sign in');
+    }
+  }
+  db().prepare('DELETE FROM limits WHERE key=?').run('login:127.0.0.1');
   const login = await get('/api/admin/login', {
     method: 'POST',
     headers: { origin: base },
@@ -191,6 +279,70 @@ try {
   assert(!jsonLd.includes('<'));
   assert.equal(JSON.parse(jsonLd).headline, maliciousTitle);
 
+  for (const action of [
+    'post',
+    'revision',
+    'preview',
+    'upload',
+    'rename-tag',
+    'settings',
+    'project',
+    'delete-project',
+    'import',
+    'manual-x',
+    'convert',
+    'logout',
+  ]) {
+    for (const invalid of [
+      badLoginBodies[0],
+      badLoginBodies[3],
+      badLoginBodies[1],
+    ]) {
+      const response = await get('/api/admin/' + action, {
+        method: 'POST',
+        headers: {
+          cookie,
+          origin: base,
+          ...(invalid.contentType
+            ? { 'content-type': invalid.contentType }
+            : {}),
+        },
+        body: invalid.body,
+      });
+      assert(
+        response.status >= 400 && response.status < 500,
+        action + ' ' + invalid.name,
+      );
+    }
+  }
+  const exportPost = await get('/api/admin/export', {
+    method: 'POST',
+    headers: { cookie, origin: base, 'content-type': 'application/json' },
+    body: '{invalid',
+  });
+  assert(
+    [404, 405].includes(exportPost.status),
+    'content export remains read-only',
+  );
+  for (const route of [
+    'posts',
+    'posts/public',
+    'posts/public.md',
+    'posts/public.txt',
+    'tags',
+    'projects',
+    'stats',
+  ]) {
+    const response = await get('/api/v1/' + route, {
+      method: 'POST',
+      headers: { origin: base, 'content-type': 'application/json' },
+      body: '{malformed',
+    });
+    assert(
+      [404, 405].includes(response.status),
+      route + ' must remain read-only without a server error',
+    );
+  }
   const image = await sharp({
     create: { width: 8, height: 8, channels: 3, background: 'blue' },
   })

@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
+import { FormBodyError, readFormBody, loginFields } from '../../../lib/forms';
 import { login, allow, cookieName, csrfValid } from '../../../lib/auth';
 import { config } from '../../../lib/config';
 import { db, setSetting, transaction } from '../../../lib/db';
@@ -27,13 +28,17 @@ export const POST: APIRoute = async ({
         status: 429,
         headers: { 'Retry-After': '600' },
       });
+    let fields;
+    try {
+      fields = loginFields(await readFormBody(request));
+    } catch (error) {
+      if (error instanceof FormBodyError)
+        return new Response('Unable to sign in', { status: error.status });
+      throw error;
+    }
     if (request.headers.get('origin') !== config.origin)
       return new Response('Unable to sign in', { status: 401 });
-    const form = await request.formData();
-    const token = await login(
-      String(form.get('password') || '').slice(0, 1024),
-      String(form.get('code') || ''),
-    );
+    const token = await login(fields.password, fields.code);
     if (!token) return new Response('Unable to sign in', { status: 401 });
     cookies.set(cookieName(), token, {
       path: '/',
@@ -48,7 +53,7 @@ export const POST: APIRoute = async ({
   if (Number(request.headers.get('content-length') || 0) > 33 * 1024 * 1024)
     return new Response('Request too large', { status: 413 });
   try {
-    const form = await request.formData();
+    const form = await readFormBody(request);
     if (
       !csrfValid(request, locals.session.csrf, String(form.get('csrf') || ''))
     )
@@ -235,6 +240,8 @@ export const POST: APIRoute = async ({
     }
     return new Response('Not found', { status: 404 });
   } catch (error) {
+    if (error instanceof FormBodyError)
+      return new Response('Invalid input', { status: error.status });
     return new Response(
       error instanceof z.ZodError
         ? 'Invalid input'
