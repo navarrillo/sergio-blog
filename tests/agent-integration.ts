@@ -376,37 +376,9 @@ export async function agentIntegration(
   );
   assert(getDraft(foreign.id).agent_access_revoked_at);
 
-  // Independent, persisted write/read budgets, including rejected valid-token writes.
-  const rate = createAgentToken('Rate test');
-  tokens.push(rate.token);
-  const limitedDraft = await (
-    await api('', 'POST', { title: 'Rate draft' }, rate.token)
-  ).json();
-  for (let i = 1; i < 30; i++)
-    assert.equal((await api('', 'POST', {}, rate.token)).status, 400);
-  let limited = await api('', 'POST', { title: 'Blocked' }, rate.token);
-  assert.equal(limited.status, 429);
-  assert(Number(limited.headers.get('retry-after')) > 0);
-  assert.equal(
-    (await api('', 'POST', { title: 'Different token' }, b.token)).status,
-    201,
-  );
-  for (let i = 0; i < 120; i++)
-    assert.equal(
-      (await api('/' + limitedDraft.id, 'GET', undefined, rate.token)).status,
-      200,
-    );
-  assert.equal(
-    (await api('/' + limitedDraft.id, 'GET', undefined, rate.token)).status,
-    429,
-  );
-  await restart();
-  limited = await api('', 'POST', { title: 'Still blocked' }, rate.token);
-  assert.equal(limited.status, 429);
-  assert.equal(
-    (await api('/' + limitedDraft.id, 'GET', undefined, rate.token)).status,
-    429,
-  );
+  const { agentBudgets } = await import('./agent-budgets');
+  const { rate, limitedDraft, other } = await agentBudgets(base, restart);
+  tokens.push(rate.token, other.token);
   reset();
   for (let i = 0; i < 21; i++) {
     const r = await request('/api/agent/v1/drafts', {

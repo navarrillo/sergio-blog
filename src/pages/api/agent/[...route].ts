@@ -9,7 +9,7 @@ import {
   listAgentDrafts,
   AgentError,
 } from '../../../lib/agent';
-import { db } from '../../../lib/db';
+import { db, transaction } from '../../../lib/db';
 import { now } from '../../../lib/config';
 
 const json = (
@@ -28,13 +28,7 @@ const json = (
 export const ALL: APIRoute = async ({ request, params, locals, url }) => {
   if (process.env.AGENT_API_ENABLED !== 'true')
     return json({ error: 'Not found' }, 404);
-  let token;
-  try {
-    token = authenticateAgent(request.headers.get('authorization'));
-  } catch {
-    return json({ error: 'Unavailable' }, 503);
-  }
-  if (!token) {
+  const unauthorized = () => {
     const key = 'agent-auth:' + locals.ip;
     const allowed = allow(key, 20, 600000);
     console.warn('blog-agent-auth-failed ip=' + locals.ip);
@@ -42,7 +36,14 @@ export const ALL: APIRoute = async ({ request, params, locals, url }) => {
       'WWW-Authenticate': 'Bearer',
       ...(!allowed ? { 'Retry-After': retryAfter(key) } : {}),
     });
+  };
+  let token;
+  try {
+    token = authenticateAgent(request.headers.get('authorization'));
+  } catch {
+    return json({ error: 'Unavailable' }, 503);
   }
+  if (!token) return unauthorized();
   const route = params.route || '';
   const match = /^v1\/drafts\/([1-9][0-9]*)$/.exec(route);
   const id = match ? Number(match[1]) : undefined;
@@ -56,17 +57,24 @@ export const ALL: APIRoute = async ({ request, params, locals, url }) => {
   )
     return json({ error: 'Not found' }, 404);
   const key = `agent-${read ? 'read' : 'write'}:${token.id}`;
-  if (!allow(key, read ? 120 : 30, 3600000))
+  if (read && !allow(key, 120, 3600000))
     return json({ error: 'Rate limit exceeded' }, 429, {
       'Retry-After': retryAfter(key),
     });
   try {
     const listing = list ? listAgentDrafts(url.searchParams, token) : undefined;
+    const input = !read ? await agentInput(request, patch) : undefined;
     const post = list
       ? undefined
       : read
         ? ownedDraft(id!, token)
-        : agentSave(await agentInput(request, patch), token, id);
+        : transaction(() => {
+            // Reserve and commit successful-write quota with the editorial write.
+            // A validation/ownership/save failure rolls the reservation back as well.
+            if (!allow(key, 30, 3600000))
+              throw new AgentError(429, 'Rate limit exceeded');
+            return agentSave(input!, token, id);
+          });
     db()
       .prepare('UPDATE agent_tokens SET last_used_at=? WHERE id=?')
       .run(now(), token.id);
@@ -86,9 +94,20 @@ export const ALL: APIRoute = async ({ request, params, locals, url }) => {
       status,
     );
   } catch (error) {
-    if (error instanceof AgentError)
-      return json({ error: error.message }, error.status);
-    // Do not log parser errors, which can contain Markdown or credentials.
-    return json({ error: 'Invalid input' }, 400);
+    const status = error instanceof AgentError ? error.status : 400;
+    if (status === 401) return unauthorized();
+    const message =
+      error instanceof AgentError ? error.message : 'Invalid input';
+    if (status === 429)
+      return json({ error: message }, 429, { 'Retry-After': retryAfter(key) });
+    if (!read) {
+      const rejectedKey = 'agent-rejected-write:' + token.id;
+      if (!allow(rejectedKey, 60, 3600000))
+        return json({ error: 'Rate limit exceeded' }, 429, {
+          'Retry-After': retryAfter(rejectedKey),
+        });
+    }
+    // Parser errors may contain Markdown or credentials: never log their details.
+    return json({ error: message }, status);
   }
 };
