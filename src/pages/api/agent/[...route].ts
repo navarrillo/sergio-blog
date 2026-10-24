@@ -5,6 +5,8 @@ import {
   agentSave,
   ownedDraft,
   agentReply,
+  agentReadReply,
+  listAgentDrafts,
   AgentError,
 } from '../../../lib/agent';
 import { db } from '../../../lib/db';
@@ -45,7 +47,8 @@ export const ALL: APIRoute = async ({ request, params, locals, url }) => {
   const match = /^v1\/drafts\/([1-9][0-9]*)$/.exec(route);
   const id = match ? Number(match[1]) : undefined;
   const create = route === 'v1/drafts' && request.method === 'POST';
-  const read = Boolean(match) && request.method === 'GET';
+  const list = route === 'v1/drafts' && request.method === 'GET';
+  const read = (Boolean(match) || list) && request.method === 'GET';
   const patch = Boolean(match) && request.method === 'PATCH';
   if (
     (!create && !read && !patch) ||
@@ -58,9 +61,12 @@ export const ALL: APIRoute = async ({ request, params, locals, url }) => {
       'Retry-After': retryAfter(key),
     });
   try {
-    const post = read
-      ? ownedDraft(id!, token)
-      : agentSave(await agentInput(request, patch), token, id);
+    const listing = list ? listAgentDrafts(url.searchParams, token) : undefined;
+    const post = list
+      ? undefined
+      : read
+        ? ownedDraft(id!, token)
+        : agentSave(await agentInput(request, patch), token, id);
     db()
       .prepare('UPDATE agent_tokens SET last_used_at=? WHERE id=?')
       .run(now(), token.id);
@@ -71,11 +77,14 @@ export const ALL: APIRoute = async ({ request, params, locals, url }) => {
           token: token.name,
           method: request.method,
           path: url.pathname,
-          draft_id: post.id,
+          draft_id: post?.id ?? null,
           status,
         }),
     );
-    return json(agentReply(post), status);
+    return json(
+      listing || (read ? agentReadReply(post!) : agentReply(post!)),
+      status,
+    );
   } catch (error) {
     if (error instanceof AgentError)
       return json({ error: error.message }, error.status);

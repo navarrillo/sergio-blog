@@ -284,6 +284,8 @@ export async function agentIntegration(
       404,
     );
   }
+  const { agentReading } = await import('./agent-reading');
+  tokens.push(await agentReading(base, foreign.id, adminId));
   const count = () =>
     Number(
       (
@@ -303,6 +305,10 @@ export async function agentIntegration(
     Object.keys(draft).sort(),
   );
   assert.equal(count(), before + 1);
+  assert.equal(
+    (await (await api('/' + draft.id)).json()).body,
+    'AGENT_REVISED_MARKDOWN',
+  );
   assert.equal(getDraft(draft.id).summary, input.summary);
   assert.equal(getDraft(draft.id).status, 'draft');
   assert.equal(
@@ -338,6 +344,11 @@ export async function agentIntegration(
   });
   assert.equal(publish.status, 303);
   assert.equal(getDraft(draft.id).status, 'published');
+  assert(
+    !(await (await api('?limit=50')).json()).items.some(
+      (p: any) => p.id === draft.id,
+    ),
+  );
   assert.equal((await api('/' + draft.id)).status, 404);
   assert.equal(
     (await api('/' + draft.id, 'PATCH', { title: 'Take back' })).status,
@@ -545,6 +556,7 @@ export async function agentIntegration(
     '/api/agent',
     '/api/agent/',
     '/api/agent/v1/drafts',
+    '/api/agent/v1/drafts?limit=50',
     '/api/agent/v1/drafts/' + draft.id,
     '/api/agent/v2/anything',
     '/%61pi/agent/v1/drafts',
