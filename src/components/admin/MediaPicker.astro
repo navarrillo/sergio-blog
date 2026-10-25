@@ -1,0 +1,54 @@
+---
+const { csrf, target = 'image', body = false } = Astro.props;
+---
+
+<section class="admin-card media-picker" data-target={target}>
+  <h2>Images</h2>
+  <form
+    class="media-upload"
+    action="/api/admin/upload"
+    method="post"
+    enctype="multipart/form-data"
+  >
+    <input type="hidden" name="csrf" value={csrf} />
+    <label
+      >Upload image<input
+        type="file"
+        name="file"
+        accept="image/jpeg,image/png,image/webp"
+        required
+      /></label
+    >
+    <p class="field-help">
+      JPEG, PNG or WebP · up to 8 MB. Metadata is removed.
+    </p>
+    <label
+      >Use image as<select name="target"
+        ><option value={target}>Cover / photo</option>{
+          body && <option value="body">Article image</option>
+        }</select
+      ></label
+    >
+    {
+      body && (
+        <label>
+          Image description (alt text)
+          <input name="alt" maxlength="500" placeholder="Describe the image" />
+        </label>
+      )
+    }
+    <button class="secondary" type="submit">Upload</button>
+    <progress
+      class="upload-progress"
+      max="100"
+      value="0"
+      hidden
+      aria-label="Upload progress"></progress>
+    <output class="upload-result" role="status" aria-live="polite"></output>
+  </form>
+  <button type="button" class="quiet browse-media"
+    >Browse uploaded images</button
+  >
+  <div class="media-library" hidden aria-label="Uploaded images"></div>
+  <button type="button" class="quiet remove-cover">Remove cover / photo</button>
+</section>

@@ -67,7 +67,7 @@ if (structuredData)
     />{
       post && <script type="application/ld+json" set:html={structuredData} />
     }</head
-  ><body
+  ><body class:list={{ 'admin-workspace': admin }}
     ><a class="skip" href="#main">Skip to content</a><div
       class:list={['shell', { wide: admin }]}
     >
@@ -85,11 +85,18 @@ if (structuredData)
                     ['/admin/projects', 'projects'],
                     ['/admin/settings', 'settings'],
                     ['/admin/inbox', 'X inbox'],
+                    ['/admin/tags', 'tags'],
                   ].map(([href, label]) => (
                     <a
                       href={href}
                       aria-current={
-                        Astro.url.pathname === href ? 'page' : undefined
+                        Astro.url.pathname === href ||
+                        (href === '/admin' &&
+                          ['/admin/edit', '/admin/preview'].includes(
+                            Astro.url.pathname,
+                          ))
+                          ? 'page'
+                          : undefined
                       }
                     >
                       {label}

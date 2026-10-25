@@ -9,13 +9,14 @@ export const GET: APIRoute = async () => {
     'content.json': strToU8(
       JSON.stringify(
         {
-          version: 1,
+          version: 2,
           posts,
           projects: db().prepare('SELECT * FROM projects').all(),
           settings: db()
             .prepare("SELECT * FROM settings WHERE key<>'analytics_cache'")
             .all(),
           revisions: db().prepare('SELECT * FROM revisions').all(),
+          working_copies: db().prepare('SELECT * FROM working_copies').all(),
           redirects: db().prepare('SELECT * FROM redirects').all(),
           x_imports: db().prepare('SELECT * FROM x_imports').all(),
         },
@@ -28,6 +29,14 @@ export const GET: APIRoute = async () => {
     files[`posts/${p.slug}.md`] = strToU8(
       `---\nmetadata: ${JSON.stringify({ ...p, body: undefined })}\n---\n\n${p.body}`,
     );
+  for (const copy of db()
+    .prepare('SELECT * FROM working_copies')
+    .all() as any[]) {
+    const content = JSON.parse(copy.content);
+    files[`working-copies/${copy.post_id}.md`] = strToU8(
+      `---\nmetadata: ${JSON.stringify({ ...content, body: undefined })}\n---\n\n${content.body}`,
+    );
+  }
   for (const name of await readdir(config.uploads).catch(() => [])) {
     if (/^[a-f0-9-]+\.webp$/.test(name))
       files['uploads/' + name] = new Uint8Array(

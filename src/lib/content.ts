@@ -49,6 +49,7 @@ function publicPost(row: any) {
   const {
     created_by_token_id: _owner,
     agent_access_revoked_at: _revoked,
+    edit_version: _editVersion,
     ...post
   } = hydrate(row);
   return post;
@@ -166,7 +167,7 @@ export function tags() {
 }
 export const projects = () =>
   db().prepare('SELECT * FROM projects ORDER BY id DESC').all();
-export function savePost(input: unknown, id?: number) {
+export function savePost(input: unknown, id?: number, checkpoint = true) {
   const p = PostInput.parse(input);
   return transaction(() => {
     const old = id ? getDraft(id) : undefined;
@@ -178,11 +179,12 @@ export function savePost(input: unknown, id?: number) {
     )
       throw new Error('Slug is reserved by a previous URL');
     if (old) {
-      db()
-        .prepare(
-          'INSERT INTO revisions(post_id,snapshot,created_at) VALUES(?,?,?)',
-        )
-        .run(id!, JSON.stringify(old), now());
+      if (checkpoint)
+        db()
+          .prepare(
+            'INSERT INTO revisions(post_id,snapshot,created_at) VALUES(?,?,?)',
+          )
+          .run(id!, JSON.stringify(old), now());
       if (old.slug !== p.slug) {
         db()
           .prepare('INSERT OR REPLACE INTO redirects VALUES(?,?)')
@@ -227,13 +229,13 @@ export function savePost(input: unknown, id?: number) {
     );
   });
 }
-export function restoreRevision(postId: number, revisionId: number) {
-  const row = db()
-    .prepare('SELECT snapshot FROM revisions WHERE id=? AND post_id=?')
-    .get(revisionId, postId) as any;
-  if (!row) throw new Error('Revision not found');
-  const snapshot = JSON.parse(row.snapshot);
-  return savePost({ ...snapshot, status: 'draft' }, postId);
+export function pinnedPosts() {
+  return db()
+    .prepare(
+      "SELECT * FROM posts WHERE featured=1 AND status='published' AND published_at<=? ORDER BY published_at DESC,id DESC",
+    )
+    .all(now())
+    .map(publicPost);
 }
 export function redirectFor(slug: string) {
   return db()
