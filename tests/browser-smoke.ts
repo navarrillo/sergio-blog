@@ -11,7 +11,7 @@ export async function browserSmoke(
   const events: string[] = [];
   const errors: string[] = [];
   const violations: string[] = [];
-  const context = await browser.newContext();
+  const context = await browser.newContext({ timezoneId: 'Europe/Stockholm' });
   await context.exposeBinding('recordTestEvent', (_source, name: string) =>
     events.push(name),
   );
@@ -90,28 +90,43 @@ export async function browserSmoke(
     ]);
     await page.goto(base + '/admin/edit?id=' + postId);
     const body = page.locator('#body');
+    await page.getByRole('button', { name: 'Markdown', exact: true }).click();
     await body.fill('editor smoke');
     await body.press('ControlOrMeta+A');
     await page.getByRole('button', { name: 'Bold', exact: true }).click();
     await expect(body).toHaveValue('**editor smoke**');
+    await body.press('ControlOrMeta+z');
+    await expect(body).toHaveValue('editor smoke');
+    await body.press('ControlOrMeta+Shift+z');
+    await expect(body).toHaveValue('**editor smoke**');
     await page.getByRole('button', { name: 'Preview', exact: true }).click();
     await expect(page.locator('#preview strong')).toHaveText('editor smoke');
-    await page.locator('#upload-form input[type=file]').setInputFiles({
+    await page.getByRole('button', { name: 'Close preview' }).click();
+    await page
+      .locator('.media-upload select[name=target]')
+      .selectOption('body');
+    await page.locator('.media-upload input[type=file]').setInputFiles({
       name: 'browser.png',
       mimeType: 'image/png',
       buffer: image,
     });
     await page.getByRole('button', { name: 'Upload', exact: true }).click();
-    await expect(page.locator('#upload-result')).toHaveText(
-      /^\/uploads\/[a-f0-9-]+\.webp$/,
+    await expect(page.locator('.upload-result')).toHaveText(
+      /^Selected: \/uploads\/[a-f0-9-]+\.webp$/,
     );
-    const uploadedPath = (await page.locator('#upload-result').textContent())!;
+    const uploadedPath = (await page
+      .locator('.upload-result')
+      .textContent())!.replace('Selected: ', '');
     await expect(body).toHaveValue(
       new RegExp(uploadedPath.replaceAll('.', '\\.')),
     );
     const served = await context.request.get(base + uploadedPath);
     assert.equal(served.status(), 200);
     assert.equal(served.headers()['content-type'], 'image/webp');
+    await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+    await expect(page.locator('#save-status')).toHaveText(/^Saved at/);
+    const { adminBrowserChecks } = await import('./admin-browser');
+    await adminBrowserChecks(context, base);
     // Smoke every private form page too; the preview and all editor JS must be excluded from tracking.
     const before = events.length;
     for (const route of [

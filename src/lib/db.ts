@@ -18,8 +18,8 @@ export async function migrate() {
   const version = Number(
     (database.prepare('PRAGMA user_version').get() as any).user_version,
   );
-  if (version >= 2) return;
-  if (existsSync(path.join(config.data, 'blog.db')) && version < 2) {
+  if (version >= 3) return;
+  if (existsSync(path.join(config.data, 'blog.db')) && version < 3) {
     mkdirSync(config.backups, { recursive: true, mode: 0o700 });
     await backup(
       database,
@@ -42,7 +42,8 @@ CREATE TRIGGER posts_ai AFTER INSERT ON posts BEGIN INSERT INTO posts_fts(rowid,
 CREATE TRIGGER posts_ad AFTER DELETE ON posts BEGIN INSERT INTO posts_fts(posts_fts,rowid,title,summary,body) VALUES('delete',old.id,old.title,old.summary,old.body); END;
 CREATE TRIGGER posts_au AFTER UPDATE ON posts BEGIN INSERT INTO posts_fts(posts_fts,rowid,title,summary,body) VALUES('delete',old.id,old.title,old.summary,old.body); INSERT INTO posts_fts(rowid,title,summary,body) VALUES(new.id,new.title,new.summary,new.body); END;
 PRAGMA user_version=1; COMMIT;`);
-  database.exec(`BEGIN IMMEDIATE;
+  if (version < 2)
+    database.exec(`BEGIN IMMEDIATE;
 CREATE TABLE agent_tokens(id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE, token_hash TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, last_used_at TEXT, revoked_at TEXT);
 ALTER TABLE posts ADD COLUMN created_by_token_id INTEGER REFERENCES agent_tokens(id);
 ALTER TABLE posts ADD COLUMN agent_access_revoked_at TEXT;
@@ -55,6 +56,16 @@ CREATE TRIGGER posts_agent_status AFTER UPDATE OF status ON posts
 WHEN OLD.created_by_token_id IS NOT NULL AND OLD.status <> NEW.status
 BEGIN UPDATE posts SET agent_access_revoked_at=COALESCE(agent_access_revoked_at,strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE id=NEW.id; END;
 PRAGMA user_version=2; COMMIT;`);
+  database.exec(`BEGIN IMMEDIATE;
+ALTER TABLE posts ADD COLUMN edit_version INTEGER NOT NULL DEFAULT 1;
+CREATE TABLE working_copies(post_id INTEGER PRIMARY KEY REFERENCES posts(id), content TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE editor_creations(request_key TEXT PRIMARY KEY,post_id INTEGER NOT NULL REFERENCES posts(id),edit_version INTEGER NOT NULL);
+ALTER TABLE revisions ADD COLUMN kind TEXT NOT NULL DEFAULT 'saved';
+CREATE TRIGGER posts_edit_version AFTER UPDATE OF title,slug,summary,body,type,status,tags,image,source_url,published_at ON posts
+WHEN NEW.edit_version=OLD.edit_version
+BEGIN UPDATE posts SET edit_version=OLD.edit_version+1 WHERE id=NEW.id; END;
+CREATE INDEX posts_pinned ON posts(featured,status,published_at);
+PRAGMA user_version=3; COMMIT;`);
 }
 let depth = 0;
 export function transaction<T>(fn: () => T): T {

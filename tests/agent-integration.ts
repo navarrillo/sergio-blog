@@ -338,11 +338,23 @@ export async function agentIntegration(
       slug: draft.slug,
       body: 'Human approved text',
       type: 'article',
-      status: 'published',
+      intent: 'save',
+      version: String(getDraft(draft.id).edit_version),
       tags: '',
     }),
   });
   assert.equal(publish.status, 303);
+  const makePublic = await request('/api/admin/post-action', {
+    method: 'POST',
+    headers: { cookie, origin: base },
+    body: new URLSearchParams({
+      csrf,
+      id: String(draft.id),
+      version: String(getDraft(draft.id).edit_version),
+      intent: 'publish',
+    }),
+  });
+  assert.equal(makePublic.status, 303);
   assert.equal(getDraft(draft.id).status, 'published');
   assert(
     !(await (await api('?limit=50')).json()).items.some(

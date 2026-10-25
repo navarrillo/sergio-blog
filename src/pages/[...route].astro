@@ -3,6 +3,7 @@ import Base from '../layouts/Base.astro';
 import PostList from '../components/PostList.astro';
 import {
   queryPosts,
+  pinnedPosts,
   getPost,
   tags,
   projects,
@@ -48,11 +49,7 @@ if (isHome || isArchive) {
 const allTags = isHome || isArchive ? (tags() as any[]) : [];
 const allProjects = isHome || isProjects ? (projects() as any[]) : [];
 const stats = isStats ? await publicStats() : null;
-const featured = isHome
-  ? queryPosts(new URLSearchParams({ limit: '100' }))
-      .items.filter((p: any) => p.featured)
-      .slice(0, 2)
-  : [];
+const featured = isHome ? pinnedPosts() : [];
 const title = missing
   ? 'Page not found'
   : post?.title ||

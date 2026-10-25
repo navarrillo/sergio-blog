@@ -4,15 +4,18 @@ import { FormBodyError, readFormBody, loginFields } from '../../../lib/forms';
 import { login, allow, cookieName, csrfValid } from '../../../lib/auth';
 import { config } from '../../../lib/config';
 import { db, setSetting, transaction } from '../../../lib/db';
-import {
-  savePost,
-  getDraft,
-  restoreRevision,
-  renderMarkdown,
-  safeURL,
-  imageURL,
-} from '../../../lib/content';
+import { renderMarkdown, safeURL, imageURL } from '../../../lib/content';
 import { storeImage } from '../../../lib/media';
+import { mediaLibrary } from '../../../lib/media';
+import {
+  changeTag,
+  EditorialError,
+  postAction,
+  restoreWorkingRevision,
+  saveWorking,
+  setPinned,
+  visibility,
+} from '../../../lib/editorial';
 import { importArchive, createImportedDraft } from '../../../lib/importer';
 export const POST: APIRoute = async ({
   request,
@@ -50,6 +53,17 @@ export const POST: APIRoute = async ({
     return redirect('/admin', 303);
   }
   if (!locals.session) return new Response('Unauthorized', { status: 401 });
+  const json = request.headers.get('accept')?.includes('application/json');
+  const back = (value: string, fallback = '/admin') =>
+    value.startsWith('/admin?') ||
+    value === '/admin' ||
+    value.startsWith('/admin/inbox?')
+      ? value
+      : fallback;
+  const success = (url: string, data: Record<string, unknown> = {}) =>
+    json
+      ? Response.json({ ok: true, redirect: url, ...data })
+      : redirect(url, 303);
   if (Number(request.headers.get('content-length') || 0) > 33 * 1024 * 1024)
     return new Response('Request too large', { status: 413 });
   try {
@@ -58,7 +72,17 @@ export const POST: APIRoute = async ({
       !csrfValid(request, locals.session.csrf, String(form.get('csrf') || ''))
     )
       return new Response('Forbidden', { status: 403 });
-    const str = (key: string) => String(form.get(key) || '');
+    const textValues = form.has('text_values')
+      ? z
+          .partialRecord(
+            z.enum(['body', 'summary', 'bio', 'description', 'text']),
+            z.string(),
+          )
+          .parse(JSON.parse(String(form.get('text_values'))))
+      : {};
+    const str = (key: string) =>
+      (textValues as Record<string, string>)[key] ??
+      String(form.get(key) || '');
     const id = Number(str('id')) || undefined;
     if (action === 'logout') {
       db()
@@ -68,32 +92,93 @@ export const POST: APIRoute = async ({
       return redirect('/admin/login', 303);
     }
     if (action === 'post') {
-      const postId = savePost(
+      const intent = str('intent') || 'save';
+      if (form.has('status'))
+        throw new EditorialError('Use an explicit publication action.');
+      if (!['save', 'autosave'].includes(intent))
+        throw new EditorialError('Unknown save action');
+      const post = saveWorking(
         {
           title: str('title'),
           slug: str('slug'),
           summary: str('summary'),
           body: str('body'),
           type: str('type'),
-          status: str('status'),
           tags: str('tags')
             .split(',')
             .map((s) => s.trim())
             .filter(Boolean),
           image: str('image'),
           source_url: str('source_url'),
-          featured: form.has('featured'),
-          published_at: str('published_at')
-            ? new Date(str('published_at')).toISOString()
-            : undefined,
         },
         id,
+        Number(str('version')),
+        intent === 'autosave',
+        str('request_key') ? z.uuid().parse(str('request_key')) : undefined,
       );
-      return redirect('/admin/edit?id=' + postId + '&saved=1', 303);
+      return success('/admin/edit?id=' + post!.id + '&saved=1', {
+        id: post!.id,
+        version: post!.edit_version,
+        updated_at: post!.working_updated_at,
+        label: visibility(post),
+        status: post!.status,
+        slug: post!.slug,
+        creation_replayed: post!.creation_replayed || false,
+      });
+    }
+    if (action === 'post-action') {
+      const post = postAction(
+        z.coerce.number().int().positive().parse(id),
+        str('intent'),
+        Number(str('version')),
+        str('scheduled_at'),
+      );
+      return success(
+        back(str('return_to'), '/admin/edit?id=' + post.id + '&saved=1'),
+        {
+          id: post.id,
+          version: post.edit_version,
+          label: visibility(post),
+          status: post.status,
+          slug: post.slug,
+          published_at: post.published_at,
+        },
+      );
+    }
+    if (action === 'pin') {
+      setPinned(
+        z.coerce.number().int().positive().parse(id),
+        str('pinned') === '1',
+      );
+      return success(back(str('return_to')), { pinned: str('pinned') === '1' });
+    }
+    if (action === 'bulk') {
+      const ids = z
+        .array(z.coerce.number().int().positive())
+        .min(1)
+        .max(20)
+        .parse(form.getAll('selected'));
+      const intent = z
+        .enum(['pin', 'unpin', 'trash', 'restore'])
+        .parse(str('intent'));
+      transaction(() => {
+        for (const postId of ids) {
+          if (intent === 'pin' || intent === 'unpin')
+            setPinned(postId, intent === 'pin');
+          else postAction(postId, intent, Number(str('version_' + postId)));
+        }
+      });
+      return success(back(str('return_to')));
     }
     if (action === 'revision') {
-      restoreRevision(id!, Number(str('revision')));
-      return redirect('/admin/edit?id=' + id, 303);
+      const post = restoreWorkingRevision(
+        z.coerce.number().int().positive().parse(id),
+        Number(str('revision')),
+        Number(str('version')),
+      )!;
+      return success('/admin/edit?id=' + id + '&saved=1', {
+        version: post.edit_version,
+      });
     }
     if (action === 'preview')
       return new Response(renderMarkdown(str('body')), {
@@ -106,39 +191,33 @@ export const POST: APIRoute = async ({
       return Response.json({ path });
     }
     if (action === 'rename-tag') {
-      const old = z
-        .string()
-        .regex(/^[a-z0-9-]+$/)
-        .parse(str('old'));
-      const replacement = z
-        .string()
-        .regex(/^[a-z0-9-]*$/)
-        .parse(str('new'));
-      transaction(() => {
-        for (const row of db()
-          .prepare(
-            'SELECT id FROM posts WHERE EXISTS(SELECT 1 FROM json_each(tags) WHERE value=?)',
-          )
-          .all(old) as any[]) {
-          const p = getDraft(row.id);
-          savePost(
-            {
-              ...p,
-              tags: [
-                ...new Set(
-                  p.tags.flatMap((t: string) =>
-                    t === old ? (replacement ? [replacement] : []) : [t],
-                  ),
-                ),
-              ],
-            },
-            row.id,
-          );
-        }
+      const count = changeTag(str('old'), str('new'));
+      return success('/admin/tags?saved=1', {
+        message: `Updated tags on ${count} posts.`,
       });
-      return redirect('/admin/tags', 303);
     }
     if (action === 'settings') {
+      const values: Record<string, string> = {};
+      const links = form
+        .getAll('link_label')
+        .map((label, i) => ({
+          label: String(label).trim(),
+          url: String(form.getAll('link_url')[i] || '').trim(),
+        }));
+      const linkErrors: Record<string, string> = {};
+      links.forEach((link, i) => {
+        if (!link.label && !link.url) return;
+        if (!link.label || link.label.length > 100)
+          linkErrors[`link_label[${i}]`] = 'Add a label of 1–100 characters.';
+        if (!link.url || !safeURL.safeParse(link.url).success)
+          linkErrors[`link_url[${i}]`] = 'Add an http(s) URL.';
+      });
+      if (Object.keys(linkErrors).length)
+        throw new EditorialError(
+          'Complete the highlighted profile links.',
+          400,
+          linkErrors,
+        );
       for (const key of [
         'bio',
         'photo',
@@ -146,21 +225,28 @@ export const POST: APIRoute = async ({
         'description',
         'links',
       ]) {
-        const value = str(key);
+        const value =
+          key === 'links' && form.has('link_label')
+            ? JSON.stringify(links.filter((link) => link.label || link.url))
+            : str(key);
         if (key === 'photo') imageURL.parse(value);
         if (key === 'links')
           z.array(z.object({ label: z.string().max(100), url: safeURL }))
             .max(20)
             .parse(JSON.parse(value || '[]'));
         if (value.length > 10000) throw new Error('Setting too long');
-        setSetting(key, value);
+        values[key] = value;
       }
-      return redirect('/admin/settings?saved=1', 303);
+      transaction(() => {
+        for (const [key, value] of Object.entries(values))
+          setSetting(key, value);
+      });
+      return success('/admin/settings?saved=1', { message: 'Settings saved.' });
     }
     if (action === 'project') {
       const p = z
         .object({
-          name: z.string().min(1).max(200),
+          name: z.string().trim().min(1).max(200),
           description: z.string().max(2000),
           image: imageURL,
           status: z.enum(['active', 'completed', 'paused']),
@@ -194,11 +280,11 @@ export const POST: APIRoute = async ({
             'INSERT INTO projects(name,description,image,status,url,source_url) VALUES(?,?,?,?,?,?)',
           )
           .run(...values);
-      return redirect('/admin/projects', 303);
+      return success('/admin/projects?saved=1', { message: 'Project saved.' });
     }
     if (action === 'delete-project') {
       db().prepare('DELETE FROM projects WHERE id=?').run(id!);
-      return redirect('/admin/projects', 303);
+      return success('/admin/projects?saved=1');
     }
     if (action === 'import') {
       const file = form.get('file');
@@ -209,7 +295,7 @@ export const POST: APIRoute = async ({
         file.name.endsWith('.zip'),
       );
       setSetting('import_report', JSON.stringify(result));
-      return redirect('/admin/inbox?imported=1', 303);
+      return success('/admin/inbox?imported=1');
     }
     if (action === 'manual-x') {
       await importArchive(
@@ -227,7 +313,7 @@ export const POST: APIRoute = async ({
           ]),
         ),
       );
-      return redirect('/admin/inbox', 303);
+      return success('/admin/inbox', { message: 'Added to private inbox.' });
     }
     if (action === 'convert') {
       const type = z.enum(['article', 'note', 'x_post']).parse(str('type'));
@@ -236,19 +322,58 @@ export const POST: APIRoute = async ({
         type,
         z.string().min(1).max(240).parse(str('title')),
       );
-      return redirect('/admin/edit?id=' + postId, 303);
+      return success('/admin/edit?id=' + postId);
     }
     return new Response('Not found', { status: 404 });
   } catch (error) {
     if (error instanceof FormBodyError)
       return new Response('Invalid input', { status: error.status });
+    if (json) {
+      const fields: Record<string, string> =
+        error instanceof EditorialError ? error.fields : {};
+      if (error instanceof z.ZodError)
+        for (const issue of error.issues)
+          fields[String(issue.path[0] || 'form')] = issue.message;
+      return Response.json(
+        {
+          error:
+            error instanceof z.ZodError
+              ? 'Check the highlighted fields.'
+              : error instanceof Error
+                ? error.message
+                : 'Request failed',
+          fields,
+        },
+        { status: error instanceof EditorialError ? error.status : 400 },
+      );
+    }
     return new Response(
       error instanceof z.ZodError
         ? 'Invalid input'
         : error instanceof Error
           ? error.message
           : 'Request failed',
-      { status: 400 },
+      { status: error instanceof EditorialError ? error.status : 400 },
     );
   }
+};
+export const GET: APIRoute = async ({ params, url, locals }) => {
+  if (!locals.session) return new Response('Unauthorized', { status: 401 });
+  if (params.action === 'session')
+    return Response.json({ csrf: locals.session.csrf });
+  if (params.action === 'media') return Response.json(await mediaLibrary());
+  if (params.action === 'revision') {
+    const revision = db()
+      .prepare(
+        'SELECT snapshot,created_at,kind FROM revisions WHERE id=? AND post_id=?',
+      )
+      .get(
+        Number(url.searchParams.get('revision')),
+        Number(url.searchParams.get('id')),
+      );
+    return revision
+      ? Response.json(revision)
+      : new Response('Revision not found', { status: 404 });
+  }
+  return new Response('Not found', { status: 404 });
 };

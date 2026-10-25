@@ -19,3 +19,4 @@ playwright-report/
 .DS_Store
 x-archive/
 .local/
+output/playwright/
