@@ -16,11 +16,12 @@ const {
   getPost,
   getDraft,
   queryPosts,
-  restoreRevision,
   redirectFor,
   renderMarkdown,
   tags,
 } = await import('../src/lib/content');
+const { restoreWorkingRevision, workingPost } =
+  await import('../src/lib/editorial');
 const { clientIP, allow, totp, validTotp, login, session, csrfValid } =
   await import('../src/lib/auth');
 const { storeImage } = await import('../src/lib/media');
@@ -64,11 +65,11 @@ test('publication, revisions, unpublication and slug chains preserve editorial d
   const revision = db()
     .prepare('SELECT id FROM revisions WHERE post_id=? ORDER BY id LIMIT 1')
     .get(id) as any;
-  restoreRevision(id, revision.id);
-  expect(getDraft(id)?.body).toBe('original');
-  expect(getDraft(id)?.status).toBe('draft');
+  restoreWorkingRevision(id, revision.id, getDraft(id).edit_version);
+  expect(workingPost(id)?.body).toBe('original');
+  expect(getDraft(id)?.status).toBe('published');
   expect(getPost('first')).toBeUndefined();
-  expect(redirectFor('second')).toBeUndefined();
+  expect(redirectFor('second')?.slug).toBe('third');
 });
 test('FTS handles punctuation and SQL-like input, filters, and stable pagination', () => {
   for (let i = 0; i < 5; i++)

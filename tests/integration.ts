@@ -25,6 +25,7 @@ Object.assign(process.env, {
 mkdirSync(root + '/uploads');
 const { migrate, db, setSetting } = await import('../src/lib/db');
 const { savePost, getDraft } = await import('../src/lib/content');
+const { workingPost, saveWorking } = await import('../src/lib/editorial');
 const { totp } = await import('../src/lib/auth');
 await migrate();
 const published = savePost({
@@ -283,6 +284,9 @@ try {
 
   for (const action of [
     'post',
+    'post-action',
+    'pin',
+    'bulk',
     'revision',
     'preview',
     'upload',
@@ -446,17 +450,47 @@ try {
       slug: 'new-public',
       body: 'Updated body',
       type: 'article',
-      status: 'published',
+      intent: 'save',
+      version: String(getDraft(published).edit_version),
       tags: 'test',
     }),
   });
   assert.equal(save.status, 303);
+  assert.equal((await get('/posts/public')).status, 200);
+  assert.equal((await get('/posts/new-public')).status, 404);
+  assert.equal(workingPost(published).body, 'Updated body');
+  const publishEdit = await get('/api/admin/post-action', {
+    method: 'POST',
+    headers: { cookie, origin: base },
+    body: new URLSearchParams({
+      csrf,
+      id: String(published),
+      version: String(getDraft(published).edit_version),
+      intent: 'publish',
+    }),
+  });
+  assert.equal(publishEdit.status, 303);
   assert.equal((await get('/posts/public')).status, 301);
   assert.equal((await get('/posts/new-public')).status, 200);
+  saveWorking(
+    { ...workingPost(published), body: 'PRIVATE_WORKING_RECOVERY' },
+    published,
+    getDraft(published).edit_version,
+  );
+  assert(
+    !(await (await get('/posts/new-public')).text()).includes(
+      'PRIVATE_WORKING_RECOVERY',
+    ),
+  );
   const exported = await get('/api/admin/export', { headers: { cookie } });
   assert.equal(exported.status, 200);
   const archive = unzipSync(new Uint8Array(await exported.arrayBuffer()));
   assert(strFromU8(archive['content.json']).includes('NEVER_EXPOSE_THIS'));
+  assert(
+    strFromU8(archive[`working-copies/${published}.md`]).includes(
+      'PRIVATE_WORKING_RECOVERY',
+    ),
+  );
   const client = new Client({ name: 'integration-test', version: '1.0.0' });
   await client.connect(
     new StreamableHTTPClientTransport(new URL(base + '/mcp')),
@@ -513,6 +547,7 @@ try {
   await start();
   assert.equal((await get('/posts/new-public')).status, 200);
   assert.equal(getDraft(published).body, 'Updated body');
+  assert.equal(workingPost(published).body, 'PRIVATE_WORKING_RECOVERY');
   await stop();
   const run = async (
     args: string[],
@@ -547,6 +582,16 @@ try {
         .get(published) as any
     ).body,
     'Updated body',
+  );
+  assert.equal(
+    JSON.parse(
+      (
+        restored
+          .prepare('SELECT content FROM working_copies WHERE post_id=?')
+          .get(published) as any
+      ).content,
+    ).body,
+    'PRIVATE_WORKING_RECOVERY',
   );
   restored.close();
   for (const token of agentTokens) {

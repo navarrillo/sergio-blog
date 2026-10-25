@@ -41,7 +41,7 @@ There is no default password, public signup, or web recovery. Wait for a new TOT
 ## Included
 
 - Responsive homepage, chronological archive, full text search, tags, article pages, projects and public editorial statistics.
-- Markdown editor with formatting, sanitized preview, validated JPEG/PNG/WebP uploads re-encoded without EXIF, drafts, publication, unpublication, recoverable trash, revisions, featured entries, settings and tag management.
+- Visual/Markdown editor with private autosave, version conflicts and recovery, working copies for published posts, explicit publication/unpublication, sanitized article preview, reusable JPEG/PNG/WebP uploads re-encoded without EXIF, recoverable trash, revision comparisons, unlimited homepage pins, post filters/bulk actions, settings and tag management. See [the admin guide](docs/ADMIN.md).
 - Redirects retained when slugs change, RSS/all articles, sitemap, canonical/Open Graph/JSON-LD and empty/error states.
 - Private ZIP export containing Markdown, JSON, revisions, redirect mappings, original X records and uploads. Credentials and sessions are excluded.
 - Public read-only API, OpenAPI contract and a stateless Streamable HTTP MCP server with four tools. Public interfaces query the same publication service; drafts, trash and future-dated entries are excluded.

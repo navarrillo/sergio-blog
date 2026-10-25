@@ -1,5 +1,13 @@
 # Acceptance evidence
 
+## Admin workspace upgrade — 25 October 2026
+
+Local validation uses the pinned Node 24.22.1 runtime and disposable databases. Lint, type checks, all **25 unit/service/migration tests**, the production build, integration suite, and expanded Chromium suite pass. The browser suite also runs the full integration flow, including restart, export, and database/upload backup restoration with a pending private working copy.
+
+Admin browser coverage includes repeated save/reopen with leading newlines, literal HTML delimiters, LF/CRLF byte preservation, private autosave and explicit publication, live-preserving revision restoration, stale-tab conflicts, failed-request and expired-session recovery, keyboard saving, row and bulk pin controls, visual tables/Markdown conversion, indentation preview/undo, profile links/photo reuse, projects, inbox conversion, and scheduling. Production CSP checks report no violations. Desktop/tablet/mobile screenshots are saved under ignored `output/playwright/` and inspected locally.
+
+These results describe the local implementation. Production deployment requires the release host and its `BLOG_ENV` configuration; neither is configured in this workspace. Earlier measurements below retain their original dates and scope.
+
 Implementation and local validation: **22 October 2026**. No production host was accessed or changed.
 
 | Area                    | Evidence                                                                                                                                                                                                                                                                                                |

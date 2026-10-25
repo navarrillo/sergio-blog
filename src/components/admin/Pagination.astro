@@ -1,0 +1,14 @@
+---
+const { page, pages, total, url } = Astro.props;
+const link = (number: number) => {
+  const target = new URL(url);
+  target.searchParams.set('page', String(number));
+  return target.pathname + target.search;
+};
+---
+
+<nav class="pagination" aria-label="Pagination">
+  {page > 1 && <a href={link(page - 1)}>← Previous</a>}
+  <span>{total} entries · Page {page} of {pages}</span>
+  {page < pages && <a href={link(page + 1)}>Next →</a>}
+</nav>

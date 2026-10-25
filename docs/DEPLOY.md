@@ -170,6 +170,8 @@ The restore helper starts only PostgreSQL, requires a project name beginning `um
 
 ## 7. Manual deployment and rollback
 
+The admin workspace upgrade uses additive schema version 3. Publish only after the full validation suite passes. The existing helper snapshots the database before migration; private working copies are included in all subsequent SQLite backups and version-2 content exports. Keep its fresh pre-rollback backup to recover working changes made after deployment. See [admin workflow and recovery](ADMIN.md).
+
 No automatic deploy job, self-hosted runner, server connection, or scheduled deployment exists. After reviewing and merging the `development` → `main` pull request, use:
 
 ```sh

@@ -41,7 +41,7 @@ test('version-1 upgrade preserves content, backs up, remains readable/writable b
   await migrate();
   await migrate();
   expect((db().prepare('PRAGMA user_version').get() as any).user_version).toBe(
-    2,
+    3,
   );
   expect(
     db()
