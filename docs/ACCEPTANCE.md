@@ -35,7 +35,7 @@ The 15-minute analytics snapshot is updated on demand. If Umami fails, the most 
 
 ## Node security correction · 23 October 2026
 
-The original baseline above used Node 24.14.1 and did not cover the October security release. The corrected blog build/runtime and CI pin Node 24.22.1. The minimum is enforced through package engines, strict installation, `.nvmrc`, startup/CLI checks and image checks during deployment/rollback. The separate Umami 3.4.0 image was measured as Node 22.23.2 and is now derived with official Node 22.23.4 for its existing Alpine 3.24 ABI.
+The original baseline above used Node 24.14.1 and did not cover the October security release. The corrected blog build/runtime and CI pin Node 24.22.1. The minimum is enforced through package engines, strict installation, `.nvmrc`, startup/CLI checks and image checks during deployment/rollback. The separate Umami 3.4.0 image was measured as Node 22.23.2 and was derived with official Node 22.23.4 for its existing Alpine 3.24 ABI. Umami is now pinned to 3.4.1 by digest (upstream Node 22.23.4) with the same Node pin, and PostgreSQL to 17.11 bookworm.
 
 With the official Node 24.22.1 archive (SHA-256 checked against nodejs.org), lint, typecheck, all 11 tests, build and full HTTP/MCP/editorial/backup/restore integration pass. Rebuilt containers report v24.22.1 and v22.23.4 and reach healthy state. The real Umami pageview/event smoke and the blog backup pass. The actual old v24.14.1 runtime is rejected by the guard; patched versions are accepted. No CVE exploit payload was executed: remediation evidence is the official fixed release floor, actual runtime inspection and compatibility tests.
 

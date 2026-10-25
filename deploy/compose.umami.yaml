@@ -1,7 +1,7 @@
 name: umami
 services:
   umami:
-    image: umami:3.4.0-node22.23.4
+    image: umami:3.4.1-node22.23.4
     build:
       context: ..
       dockerfile: deploy/Dockerfile.umami
@@ -36,7 +36,7 @@ services:
       driver: json-file
       options: { max-size: '10m', max-file: '3' }
   postgres:
-    image: postgres:17.9-bookworm
+    image: postgres:17.11-bookworm
     environment:
       POSTGRES_USER: umami
       POSTGRES_DB: umami
