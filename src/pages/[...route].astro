@@ -1,5 +1,6 @@
 ---
 import Base from '../layouts/Base.astro';
+import ProjectStatus from '../components/ProjectStatus.astro';
 import PostList from '../components/PostList.astro';
 import {
   queryPosts,
@@ -285,7 +286,7 @@ function viewLink(key: string, value: string) {
           {allProjects.map((p) => (
             <article class="project-card">
               {p.image && <img src={p.image} alt="" loading="lazy" />}
-              <span class="project-status">● {p.status}</span>
+              <ProjectStatus status={p.status} />
               <h2>{p.name}</h2>
               <p>{p.description}</p>
               <div class="intro-links">

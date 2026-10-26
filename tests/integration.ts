@@ -350,7 +350,7 @@ try {
     );
   }
   const image = await sharp({
-    create: { width: 8, height: 8, channels: 3, background: 'blue' },
+    create: { width: 1200, height: 628, channels: 3, background: 'blue' },
   })
     .png()
     .toBuffer();

@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import MediaPicker from '../../components/admin/MediaPicker.astro';
 import PostActions from '../../components/admin/PostActions.astro';
 import Pagination from '../../components/admin/Pagination.astro';
+import ProjectsWorkspace from '../../components/admin/ProjectsWorkspace.astro';
 import { db, setting } from '../../lib/db';
 import { projects, renderMarkdown } from '../../lib/content';
 import {
@@ -52,6 +53,9 @@ const listing = page === '' ? listAdminPosts(Astro.url.searchParams) : null;
 const knownTags = page !== 'login' ? adminTags() : [];
 const allProjects = page === 'projects' ? (projects() as any[]) : [];
 const selectedProject = allProjects.find((p) => p.id === id);
+const projectEditing =
+  page === 'projects' &&
+  (Astro.url.searchParams.has('id') || Astro.url.searchParams.has('new'));
 const a = page === '' ? await analytics() : null;
 const inboxQuery = (Astro.url.searchParams.get('q') || '').slice(0, 300);
 const inboxWhere = inboxQuery ? " WHERE text LIKE ? ESCAPE '\\'" : '';
@@ -110,7 +114,9 @@ const known = [
   'tags',
 ];
 const missing =
-  !known.includes(page) || (['edit', 'preview'].includes(page) && !post);
+  !known.includes(page) ||
+  (['edit', 'preview'].includes(page) && !post) ||
+  (page === 'projects' && Astro.url.searchParams.has('id') && !selectedProject);
 if (missing) Astro.response.status = 404;
 const returnParam = Astro.url.searchParams.get('return_to') || '/admin';
 const returnTo =
@@ -190,7 +196,7 @@ const headings: Record<string, string> = {
             </>
           </form>
         </div>
-        {page !== '' && (
+        {page !== '' && !projectEditing && (
           <a class="back-link" href={returnTo}>
             ← Back to posts
           </a>
@@ -200,7 +206,19 @@ const headings: Record<string, string> = {
             Saved successfully.
           </p>
         )}
-        {missing && <p>Page not found.</p>}
+        {Astro.url.searchParams.has('deleted') && page === 'projects' && (
+          <p class="notice" role="status">
+            Project deleted.
+          </p>
+        )}
+        {missing && (
+          <p>
+            Page not found.{' '}
+            {page === 'projects' && (
+              <a href="/admin/projects">Back to projects</a>
+            )}
+          </p>
+        )}
         {page === '' && listing && (
           <>
             {a && (
@@ -962,109 +980,14 @@ const headings: Record<string, string> = {
             </aside>
           </div>
         )}
-        {page === 'projects' && (
-          <>
-            <div class="projects-grid">
-              {allProjects.map((p) => (
-                <article class="project-card">
-                  <span class="pill">{p.status}</span>
-                  <h2>{p.name}</h2>
-                  <p>{p.description}</p>
-                  <a href={'/admin/projects?id=' + p.id}>Edit</a>
-                  <form
-                    action="/api/admin/delete-project"
-                    method="post"
-                    data-admin-form
-                    data-reload
-                    data-confirm="Delete this project? This cannot be undone."
-                  >
-                    <input type="hidden" name="csrf" value={csrf} />
-                    <input type="hidden" name="id" value={p.id} />
-                    <button class="quiet">Delete project</button>
-                  </form>
-                </article>
-              ))}
-            </div>
-            <div class="editor-layout">
-              <form
-                class="admin-card"
-                action="/api/admin/project"
-                method="post"
-                data-admin-form
-                data-redirect="/admin/projects?saved=1"
-              >
-                <h2>{selectedProject ? 'Edit project' : 'Add a project'}</h2>
-                <input type="hidden" name="csrf" value={csrf} />
-                <input
-                  type="hidden"
-                  name="id"
-                  value={selectedProject?.id || ''}
-                />
-                <label>
-                  Name
-                  <input
-                    name="name"
-                    value={selectedProject?.name || ''}
-                    required
-                    maxlength="200"
-                  />
-                </label>
-                <label>
-                  Description
-                  <textarea
-                    name="description"
-                    data-original-value={JSON.stringify(
-                      selectedProject?.description || '',
-                    )}
-                    rows="4"
-                    maxlength="2000"
-                    set:text={'\n' + (selectedProject?.description || '')}
-                  />
-                </label>
-                {[
-                  ['url', 'Project URL'],
-                  ['source_url', 'Source URL'],
-                ].map(([key, label]) => (
-                  <label>
-                    {label}
-                    <input
-                      type="url"
-                      name={key}
-                      value={selectedProject?.[key] || ''}
-                    />
-                  </label>
-                ))}
-                <label>
-                  Status
-                  <select name="status">
-                    {['active', 'completed', 'paused'].map((s) => (
-                      <option selected={selectedProject?.status === s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <input
-                  type="hidden"
-                  name="image"
-                  value={selectedProject?.image || ''}
-                />
-                <img
-                  data-image-preview="image"
-                  src={selectedProject?.image || undefined}
-                  alt="Project cover"
-                  hidden={!selectedProject?.image}
-                  class="cover-thumbnail"
-                />
-                <div class="form-footer">
-                  <button>Save project</button>
-                </div>
-              </form>
-              <aside>
-                <MediaPicker csrf={csrf} />
-              </aside>
-            </div>
-          </>
+        {page === 'projects' && !missing && (
+          <ProjectsWorkspace
+            csrf={csrf}
+            url={Astro.url}
+            projects={allProjects}
+            selectedProject={selectedProject}
+            editing={projectEditing}
+          />
         )}
         {page === 'tags' && (
           <>
@@ -1318,4 +1241,5 @@ const headings: Record<string, string> = {
   }
   <script src="../../scripts/admin.ts"></script>
   {page === 'edit' && <script src="../../scripts/editor.ts" />}
+  {page === 'projects' && <script src="../../scripts/projects.ts" />}
 </Base>
