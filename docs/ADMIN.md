@@ -34,6 +34,8 @@ Image controls support uploads with progress, reuse through thumbnails, cover/ph
 
 Settings use labelled profile links and direct photo selection. Projects use the same image and validation controls. Tag management shows actual published and private usage, including pending tags; total counts also include trash. Renaming into an existing tag merges it, and an empty replacement removes it. Global tag changes intentionally update live and pending metadata together. X inbox searches and paginates imports, reports issues in readable form, counts page selection, and links converted entries to their resulting drafts.
 
+Projects have a thumbnail overview with status totals, text search, status filters and newest/name sorting. Add or edit opens a dedicated form with a live public-card preview, description counter, image selection/removal and Cmd/Ctrl+S saving. Filters are retained when returning from editing or deletion. Changes become public only after **Save project**; failed saves keep the form intact, and leaving with unsaved changes triggers the browser warning. Permanent deletion is under **More** and confirms the project name. Covers retain their full original proportions (including 1200 × 628 images); active status text and its dot share the same green.
+
 ## Migration and release
 
 Schema version 3 adds private working copies, edit versions, draft creation request keys, revision labels, and a pin lookup index. The existing post schema and publication boundary remain authoritative. The migration takes a consistent pre-migration backup and runs only through the existing explicit migration/deployment flow.

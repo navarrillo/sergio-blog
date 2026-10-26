@@ -491,9 +491,9 @@ pre code {
   padding-top: 10px;
 }
 .project-card > img {
+  display: block;
   width: 100%;
-  max-height: 220px;
-  object-fit: cover;
+  height: auto;
   margin-bottom: 18px;
 }
 .project-card h2 {
@@ -502,10 +502,27 @@ pre code {
 .project-card p {
   color: var(--muted);
   font-size: 15px;
+  white-space: pre-line;
 }
 .project-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 12px;
   color: var(--muted);
+}
+.project-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.project-status[data-status='active'] {
+  color: #187343;
+}
+.project-status[data-status='paused'] {
+  color: #8a5c0a;
 }
 .stat-grid {
   display: grid;
@@ -1281,6 +1298,136 @@ td a {
 .inbox-draft-link {
   margin-left: 16px;
 }
+.project-list-heading,
+.project-card-actions,
+.project-savebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.project-list-heading h2,
+.project-list-heading p {
+  margin-bottom: 4px;
+}
+.project-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding-top: 20px;
+}
+.project-summary > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.admin-project-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 20px;
+}
+.admin-project-card {
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+}
+.admin-project-card h2 {
+  margin: 10px 0;
+  font-size: 19px;
+}
+.admin-project-card h2 a {
+  color: var(--ink);
+}
+.project-thumbnail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1200 / 628;
+  margin-bottom: 18px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--wash);
+  color: var(--muted);
+  font-size: 13px;
+}
+.project-thumbnail img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: inherit;
+}
+.project-description {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 14px;
+}
+.project-card-links {
+  margin-top: auto;
+  padding-bottom: 18px;
+  font-size: 13px;
+}
+.project-card-actions {
+  border-top: 1px solid var(--line);
+  padding-top: 16px;
+}
+.project-delete-menu summary {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 8px;
+}
+.project-delete-menu form {
+  margin-top: 8px !important;
+}
+.danger {
+  color: #a42d19;
+}
+.project-editor-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.project-editor-aside {
+  display: grid;
+  gap: 20px;
+  min-width: 0;
+}
+.project-preview .project-card {
+  border: 0;
+  padding-bottom: 0;
+  overflow-wrap: anywhere;
+}
+.project-preview .project-card h2 {
+  font-size: 21px;
+}
+.project-preview .project-card p {
+  white-space: pre-line;
+}
+.project-preview .intro-links {
+  font-size: 13px;
+}
+.project-editor-heading {
+  margin-bottom: 24px;
+}
+.project-editor-heading h2 {
+  margin-bottom: 4px;
+}
+.project-savebar {
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+  padding: 16px 0 0;
+  margin-top: 24px;
+  font-size: 13px;
+}
+.project-savebar > .field-help {
+  flex-basis: 100%;
+}
 @media (max-width: 1050px) {
   .admin-workspace .editor-layout {
     grid-template-columns: minmax(0, 1fr) 260px;
@@ -1291,6 +1438,9 @@ td a {
   }
 }
 @media (max-width: 800px) {
+  .project-editor-layout {
+    grid-template-columns: 1fr;
+  }
   .admin-workspace .editor-layout,
   .editor-support-grid {
     grid-template-columns: 1fr;

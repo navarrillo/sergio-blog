@@ -20,7 +20,11 @@ export async function adminBrowserChecks(
     )
       violations.push(message.text());
   });
-  page.on('dialog', (dialog) => dialog.accept());
+  const dialogs: string[] = [];
+  page.on('dialog', (dialog) => {
+    dialogs.push(dialog.type());
+    return dialog.accept();
+  });
   await page.goto(base + '/admin/edit');
   const csrf = await page.locator('input[name=csrf]').first().inputValue();
   const api = async (action: string, fields: Record<string, string>) => {
@@ -347,7 +351,12 @@ export async function adminBrowserChecks(
   );
 
   await page.goto(base + '/admin/projects');
-  const projectForm = page.locator('form[action="/api/admin/project"]');
+  await expect(page.locator('[data-project-editor]')).toHaveCount(0);
+  await page
+    .getByRole('link', { name: 'Add project', exact: true })
+    .first()
+    .click();
+  const projectForm = page.locator('[data-project-editor]');
   await projectForm.locator('input[name=name]').fill('Browser quality project');
   await projectForm
     .locator('textarea[name=description]')
@@ -355,15 +364,175 @@ export async function adminBrowserChecks(
   await projectForm
     .locator('input[name=url]')
     .fill('https://example.com/project');
-  await page.getByRole('button', { name: 'Save project' }).click();
+  await expect(page.locator('[data-project-preview-name]')).toHaveText(
+    'Browser quality project',
+  );
+  await expect(page.locator('[data-project-save-status]')).toHaveText(
+    'Unsaved changes',
+  );
+  await page.getByRole('button', { name: 'Browse uploaded images' }).click();
+  await page.locator('.media-thumbnail').first().click();
+  await expect(page.locator('[data-image-preview=image]')).toBeVisible();
+  const cover = await projectForm.locator('input[name=image]').inputValue();
+  // A failed save must keep text, cover and dirty state available for retry.
+  await page.route('**/api/admin/project', (route) => route.abort());
+  await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await expect(page.locator('[data-project-save-status]')).toHaveText(
+    'Save failed. Your changes are still here.',
+  );
+  await expect(projectForm.locator('input[name=name]')).toHaveValue(
+    'Browser quality project',
+  );
+  await page.unroute('**/api/admin/project');
+  const dialogsBeforeSave = dialogs.length;
+  await projectForm.locator('input[name=name]').press('ControlOrMeta+s');
+  await expect(page).toHaveURL(/saved=1/);
+  assert.equal(
+    dialogs.length,
+    dialogsBeforeSave,
+    'Successful saves must not show an unsaved warning',
+  );
   const project = page
-    .locator('.project-card')
+    .locator('.admin-project-card')
     .filter({ hasText: 'Browser quality project' });
   await expect(project).toBeVisible();
+  await expect(project.locator('.project-thumbnail img')).toHaveAttribute(
+    'src',
+    cover,
+  );
+  for (const status of ['paused', 'completed'])
+    await api('project', {
+      name: 'Quality ' + status,
+      description: 'Filter fixture',
+      status,
+      image: '',
+      url: '',
+      source_url: '',
+    });
+  await page.reload();
+  await page.locator('input[name=q]').fill('quality');
+  await page.locator('select[name=status]').selectOption('active');
+  await page.locator('select[name=sort]').selectOption('name');
+  await page
+    .getByRole('button', { name: 'Apply filters', exact: true })
+    .click();
+  await expect(page.locator('.admin-project-card')).toHaveCount(1);
   await project.getByRole('link', { name: 'Edit', exact: true }).click();
   await expect(page.locator('textarea[name=description]')).toHaveValue(
     '\nA multiline project description\n',
   );
+  await expect(page.locator('[data-project-save-status]')).toHaveText(
+    'No unsaved changes',
+  );
+  await page.locator('select[name=status]').selectOption('paused');
+  await expect(page.locator('[data-project-preview-status]')).toHaveAttribute(
+    'data-status',
+    'paused',
+  );
+  await page.getByRole('button', { name: 'Remove cover / photo' }).click();
+  await expect(page.locator('[data-image-preview=image]')).toBeHidden();
+  await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await expect(page).toHaveURL(/q=quality&status=active&sort=name&saved=1/);
+  await expect(
+    page.getByRole('heading', { name: 'No projects match your filters.' }),
+  ).toBeVisible();
+  await page
+    .getByRole('link', { name: 'Clear filters', exact: true })
+    .first()
+    .click();
+  await project.getByRole('link', { name: 'Edit', exact: true }).click();
+  await expect(page.locator('select[name=status]')).toHaveValue('paused');
+  await expect(projectForm.locator('input[name=image]')).toHaveValue('');
+  await page.locator('select[name=status]').selectOption('active');
+  await page.getByRole('button', { name: 'Browse uploaded images' }).click();
+  await page.locator('.media-thumbnail').first().click();
+  await page.getByRole('button', { name: 'Save project', exact: true }).click();
+  await project.getByRole('link', { name: 'Edit', exact: true }).click();
+  // Cancel warns only when the form has changed.
+  await projectForm.locator('input[name=name]').fill('Unsaved project name');
+  const warningsBeforeCancel = dialogs.filter(
+    (kind) => kind === 'beforeunload',
+  ).length;
+  await page.getByRole('link', { name: 'Cancel', exact: true }).click();
+  await expect(page).toHaveURL(base + '/admin/projects');
+  assert.equal(
+    dialogs.filter((kind) => kind === 'beforeunload').length,
+    warningsBeforeCancel + 1,
+  );
+  await expect(project).toBeVisible();
+  await page.locator('input[name=q]').fill('nothing-matches-this-project');
+  await page
+    .getByRole('button', { name: 'Apply filters', exact: true })
+    .click();
+  await expect(page.locator('.admin-project-card')).toHaveCount(0);
+  await page.goto(base + '/admin/projects?id=999999999');
+  await expect(page.locator('[data-project-editor]')).toHaveCount(0);
+  await expect(
+    page.getByText('Page not found.', { exact: false }),
+  ).toBeVisible();
+  mkdirSync('output/playwright', { recursive: true });
+  for (const [name, width, height] of [
+    ['desktop', 1440, 1050],
+    ['tablet', 820, 1180],
+    ['mobile', 390, 844],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await page.goto(base + '/admin/projects');
+    assert(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+      name + ' projects list overflow',
+    );
+    await page.screenshot({
+      path: 'output/playwright/admin-projects-' + name + '.png',
+      fullPage: true,
+    });
+    await project.getByRole('link', { name: 'Edit', exact: true }).click();
+    assert(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+      name + ' project editor overflow',
+    );
+    await page.screenshot({
+      path: 'output/playwright/admin-project-editor-' + name + '.png',
+      fullPage: true,
+    });
+    await page.goto(base + '/projects');
+    const publicProject = page
+      .locator('.project-card')
+      .filter({ hasText: 'Browser quality project' });
+    const image = publicProject.locator('img');
+    await expect(image).toBeVisible();
+    const dimensions = await image.evaluate((element: HTMLImageElement) => ({
+      width: element.clientWidth,
+      height: element.clientHeight,
+      naturalWidth: element.naturalWidth,
+      naturalHeight: element.naturalHeight,
+    }));
+    assert(
+      Math.abs(
+        dimensions.width / dimensions.height -
+          dimensions.naturalWidth / dimensions.naturalHeight,
+      ) < 0.01,
+      'Cover must retain its natural aspect ratio',
+    );
+    const statusColors = await publicProject
+      .locator('.project-status')
+      .evaluate((element) => ({
+        text: getComputedStyle(element).color,
+        dot: getComputedStyle(element.querySelector('.project-status-dot')!)
+          .backgroundColor,
+      }));
+    assert.equal(statusColors.text, 'rgb(24, 115, 67)');
+    assert.equal(statusColors.dot, statusColors.text);
+    await page.screenshot({
+      path: 'output/playwright/public-projects-' + name + '.png',
+      fullPage: true,
+    });
+  }
+  await page.setViewportSize({ width: 1280, height: 720 });
 
   await page.goto(base + '/admin/inbox');
   await page.getByText('Add an X post manually', { exact: true }).click();
