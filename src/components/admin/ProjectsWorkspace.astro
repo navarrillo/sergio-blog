@@ -1,0 +1,344 @@
+---
+import MediaPicker from './MediaPicker.astro';
+import ProjectStatus from '../ProjectStatus.astro';
+const { csrf, url, selectedProject, editing: projectEditing } = Astro.props;
+const allProjects = Astro.props.projects as any[];
+const projectQuery = (url.searchParams.get('q') || '').slice(0, 300);
+const projectStatuses = ['active', 'completed', 'paused'];
+const projectFilter = projectStatuses.includes(
+  url.searchParams.get('status') || '',
+)
+  ? url.searchParams.get('status')!
+  : '';
+const projectSort = url.searchParams.get('sort') === 'name' ? 'name' : 'newest';
+const filteredProjects = allProjects.filter(
+  (p) =>
+    (!projectFilter || p.status === projectFilter) &&
+    [p.name, p.description, p.url, p.source_url].some((value) =>
+      value
+        .toLocaleLowerCase()
+        .includes(projectQuery.toLocaleLowerCase().trim()),
+    ),
+);
+if (projectSort === 'name')
+  filteredProjects.sort((a, b) => a.name.localeCompare(b.name));
+const projectListParams = new URLSearchParams();
+if (projectQuery) projectListParams.set('q', projectQuery);
+if (projectFilter) projectListParams.set('status', projectFilter);
+if (projectSort === 'name') projectListParams.set('sort', projectSort);
+const projectList =
+  '/admin/projects' + (projectListParams.size ? '?' + projectListParams : '');
+const projectLink = (key: string, value: string) => {
+  const params = new URLSearchParams(projectListParams);
+  params.set(key, value);
+  return '/admin/projects?' + params;
+};
+---
+
+<>
+  {
+    projectEditing ? (
+      <>
+        <a class="back-link" href={projectList}>
+          ← All projects
+        </a>
+        <div class="project-editor-layout">
+          <form
+            id="project-editor"
+            class="admin-card"
+            action="/api/admin/project"
+            method="post"
+            data-admin-form
+            data-project-editor
+            data-redirect={projectLink('saved', '1')}
+          >
+            <div class="project-editor-heading">
+              <h2>{selectedProject ? 'Edit project' : 'Add a project'}</h2>
+              <span class="field-help">Changes go live when you save.</span>
+            </div>
+            <input type="hidden" name="csrf" value={csrf} />
+            <input type="hidden" name="id" value={selectedProject?.id || ''} />
+            <label>
+              Name
+              <input
+                name="name"
+                value={selectedProject?.name || ''}
+                required
+                maxlength="200"
+                autofocus
+              />
+            </label>
+            <label>
+              Description
+              <textarea
+                name="description"
+                data-original-value={JSON.stringify(
+                  selectedProject?.description || '',
+                )}
+                rows="5"
+                maxlength="2000"
+                aria-describedby="project-description-count"
+                set:text={'\n' + (selectedProject?.description || '')}
+              />
+              <span
+                id="project-description-count"
+                class="field-help"
+                data-description-count
+              />
+            </label>
+            <label>
+              Status
+              <select name="status">
+                {projectStatuses.map((status) => (
+                  <option
+                    value={status}
+                    selected={(selectedProject?.status || 'active') === status}
+                  >
+                    {status.charAt(0).toUpperCase() + status.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {[
+              ['url', 'Project URL', 'https://your-project.com'],
+              ['source_url', 'Source URL', 'https://github.com/you/project'],
+            ].map(([key, label, placeholder]) => (
+              <label>
+                {label} <span class="field-help">Optional</span>
+                <input
+                  type="url"
+                  name={key}
+                  value={selectedProject?.[key] || ''}
+                  placeholder={placeholder}
+                />
+              </label>
+            ))}
+            <input
+              type="hidden"
+              name="image"
+              value={selectedProject?.image || ''}
+            />
+            <p class="field-help">
+              Choose a cover from Images. The full image keeps its original
+              proportions; 1200 × 628 works well.
+            </p>
+            <div class="project-savebar">
+              <span role="status" aria-live="polite" data-project-save-status>
+                No unsaved changes
+              </span>
+              <div class="action-buttons">
+                <a class="button secondary" href={projectList}>
+                  Cancel
+                </a>
+                <button type="submit">Save project</button>
+              </div>
+              <span class="field-help">Cmd / Ctrl + S to save</span>
+            </div>
+          </form>
+          <aside class="project-editor-aside">
+            <section
+              class="admin-card project-preview"
+              aria-label="Project preview"
+            >
+              <h2>Live preview</h2>
+              <p class="field-help">
+                How your project will appear on the public page.
+              </p>
+              <article class="project-card">
+                <img
+                  data-image-preview="image"
+                  src={selectedProject?.image || undefined}
+                  alt="Project cover preview"
+                  hidden={!selectedProject?.image}
+                />
+                <ProjectStatus
+                  status={selectedProject?.status || 'active'}
+                  preview
+                />
+                <h2 data-project-preview-name>
+                  {selectedProject?.name || 'Project name'}
+                </h2>
+                <p data-project-preview-description>
+                  {selectedProject?.description ||
+                    'Your project description will appear here.'}
+                </p>
+                <div class="intro-links">
+                  <a data-project-preview-link="url" hidden>
+                    Visit project ↗
+                  </a>
+                  <a data-project-preview-link="source_url" hidden>
+                    Source ↗
+                  </a>
+                </div>
+              </article>
+            </section>
+            <MediaPicker csrf={csrf} />
+          </aside>
+        </div>
+      </>
+    ) : (
+      <>
+        <div class="project-list-heading">
+          <div>
+            <h2>
+              Your projects <span class="pill">{allProjects.length}</span>
+            </h2>
+            <p class="field-help">
+              Manage the projects shown on your public page.
+            </p>
+          </div>
+          <div class="action-buttons">
+            <a
+              class="button secondary"
+              href="/projects"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View public page ↗
+            </a>
+            <a class="button" href={projectLink('new', '1')}>
+              Add project
+            </a>
+          </div>
+        </div>
+        <div class="project-summary" aria-label="Project totals">
+          {projectStatuses.map((status) => (
+            <span>
+              <ProjectStatus status={status} />{' '}
+              <strong>
+                {allProjects.filter((p) => p.status === status).length}
+              </strong>
+            </span>
+          ))}
+        </div>
+        <form class="admin-filters" method="get" action="/admin/projects">
+          <label class="search-field">
+            Search projects
+            <input
+              type="search"
+              name="q"
+              value={projectQuery}
+              placeholder="Name, description or URL"
+              maxlength="300"
+            />
+          </label>
+          <label>
+            Status
+            <select name="status">
+              <option value="">All statuses</option>
+              {projectStatuses.map((status) => (
+                <option value={status} selected={projectFilter === status}>
+                  {status.charAt(0).toUpperCase() + status.slice(1)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Sort by
+            <select name="sort">
+              <option value="newest" selected={projectSort === 'newest'}>
+                Newest first
+              </option>
+              <option value="name" selected={projectSort === 'name'}>
+                Name A–Z
+              </option>
+            </select>
+          </label>
+          <button class="secondary">Apply filters</button>
+          {(projectQuery || projectFilter || projectSort !== 'newest') && (
+            <a href="/admin/projects">Clear filters</a>
+          )}
+        </form>
+        <p class="field-help" role="status">
+          Showing {filteredProjects.length} of {allProjects.length} projects
+        </p>
+        <div class="admin-project-grid">
+          {filteredProjects.map((p) => (
+            <article class="admin-card admin-project-card">
+              <a
+                class="project-thumbnail"
+                href={projectLink('id', String(p.id))}
+                aria-label={'Edit ' + p.name}
+              >
+                {p.image ? (
+                  <img src={p.image} alt="" loading="lazy" />
+                ) : (
+                  <span>No cover image</span>
+                )}
+              </a>
+              <ProjectStatus status={p.status} />
+              <h2>
+                <a href={projectLink('id', String(p.id))}>{p.name}</a>
+              </h2>
+              <p class="project-description">
+                {p.description || 'No description yet.'}
+              </p>
+              <div class="intro-links project-card-links">
+                {p.url && (
+                  <a href={p.url} target="_blank" rel="noopener noreferrer">
+                    Visit project ↗
+                  </a>
+                )}
+                {p.source_url && (
+                  <a
+                    href={p.source_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Source ↗
+                  </a>
+                )}
+              </div>
+              <div class="project-card-actions">
+                <a
+                  class="button secondary"
+                  href={projectLink('id', String(p.id))}
+                >
+                  Edit
+                </a>
+                <details class="project-delete-menu">
+                  <summary>More</summary>
+                  <form
+                    action="/api/admin/delete-project"
+                    method="post"
+                    data-admin-form
+                    data-redirect={projectLink('deleted', '1')}
+                    data-confirm={
+                      'Delete “' + p.name + '”? This cannot be undone.'
+                    }
+                  >
+                    <input type="hidden" name="csrf" value={csrf} />
+                    <input type="hidden" name="id" value={p.id} />
+                    <button class="quiet danger">Delete project</button>
+                  </form>
+                </details>
+              </div>
+            </article>
+          ))}
+        </div>
+        {!filteredProjects.length && (
+          <div class="admin-card empty">
+            <h2>
+              {allProjects.length
+                ? 'No projects match your filters.'
+                : 'Share what you’re building.'}
+            </h2>
+            <p>
+              {allProjects.length
+                ? 'Try a different search or clear the filters.'
+                : 'Add a name, description and cover image to create your first project.'}
+            </p>
+            <a
+              class="button secondary"
+              href={
+                allProjects.length ? '/admin/projects' : projectLink('new', '1')
+              }
+            >
+              {allProjects.length ? 'Clear filters' : 'Add project'}
+            </a>
+          </div>
+        )}
+      </>
+    )
+  }
+</>

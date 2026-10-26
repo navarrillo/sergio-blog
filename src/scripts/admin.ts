@@ -136,6 +136,7 @@ document
       if (confirmation && !window.confirm(confirmation)) return;
       pending = true;
       const data = formData(form);
+      form.dispatchEvent(new Event('admin:saving'));
       form
         .querySelectorAll<HTMLInputElement>('[data-utc-input]')
         .forEach((input) => {
@@ -152,6 +153,7 @@ document
       });
       try {
         const result = await adminRequest(form.action, data);
+        form.dispatchEvent(new Event('admin:saved'));
         if (form.hasAttribute('data-reload')) location.reload();
         else if (
           form.hasAttribute('data-login') ||
@@ -170,6 +172,7 @@ document
         }
       } catch (error) {
         showFormError(form, error);
+        form.dispatchEvent(new Event('admin:save-error'));
       } finally {
         pending = false;
         buttons.forEach((button) => {
