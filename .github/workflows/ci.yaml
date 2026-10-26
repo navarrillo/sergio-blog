@@ -1,15 +1,25 @@
 name: Validate
-on: [push, pull_request]
+# Runs once per change: pull requests are validated on the PR itself, and
+# pushes are only validated on main. Docker, Umami and browser checks run only
+# when deployment files or workflows change (or on manual dispatch).
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 jobs:
-  check:
+  basic:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: 24.22.1
+          node-version-file: .nvmrc
           cache: npm
       - run: node bin/check-node.mjs
       - run: npm ci
@@ -18,8 +28,55 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm run test:integration
+
+  changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      heavy: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.heavy == 'true' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        if: github.event_name != 'workflow_dispatch'
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        with:
+          filters: |
+            heavy:
+              - 'deploy/**'
+              - '**/Dockerfile*'
+              - '**/compose*.yaml'
+              - '**/compose*.yml'
+              - '.github/workflows/**'
+
+  browser:
+    needs: [basic, changes]
+    if: needs.changes.outputs.heavy == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:browser
+
+  docker:
+    needs: [basic, changes]
+    if: needs.changes.outputs.heavy == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
       - run: docker network create blog-analytics
       - run: cp .env.example .env && mkdir -p data uploads backups && sudo chown -R 1000:1000 data uploads backups
       - run: docker compose up -d --build --wait

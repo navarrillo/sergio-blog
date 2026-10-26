@@ -23,7 +23,7 @@ Implementation and local validation: **22 October 2026**. No production host was
 | Visual review           | Homepage reviewed in browser at 375, 768 and 1440 px. Archive search returns the expected entry; mobile article is readable without horizontal overflow. Keyboard focus and skip link are supplied.                                                                                                     |
 | Lighthouse mobile       | Local production build, explicitly seeded demonstration content, Lighthouse 13.5.0: homepage performance **100**, accessibility **100**; representative article performance **100**, accessibility **100**. Historical pre-redesign/local baseline only; see the live post-redesign measurements below. |
 | Dependency audit        | npm audit reports zero known vulnerabilities for the final pinned installation.                                                                                                                                                                                                                         |
-| Hosted CI               | GitHub Actions on Ubuntu-hosted runners passes lint, typecheck, tests, build, real integration and Docker build/health check. The independent Umami smoke is also included in the final workflow.                                                                                                       |
+| Hosted CI               | GitHub Actions on Ubuntu-hosted runners passes lint, typecheck, tests, build and real integration on every change. Browser smoke, Docker build/health check and the independent Umami smoke run when deployment files or workflows change.                                                              |
 
 ## Historical operator checklist before the first launch
 
