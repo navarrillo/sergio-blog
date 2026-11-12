@@ -4,3 +4,35 @@ FROM node:22.23.5-alpine3.24@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534
 FROM ghcr.io/umami-software/umami:3.4.1@sha256:e69d1a7932e9dab0fc523edc7be1f3a53f3c261f57856fc2167ae74a8fc022e8
 COPY --from=patched-node /usr/local/bin/node /usr/local/bin/node
 RUN test "$(node --version)" = "v22.23.5"
+# Upstream 3.4.1 ships curl/libcurl 8.22.0 (CVE-2026-92392). Upgrade both from Alpine 3.24
+# and fail the build if either is still below 8.23.0. A minimum, not an exact revision,
+# so the next Alpine patch still builds. Return to the upstream runtime user.
+USER root
+RUN set -o pipefail \
+ && apk upgrade --no-cache curl libcurl \
+ && apk list -I 2>/dev/null | awk ' \
+      function older(v, min, i, a, b) { \
+        split(v, a, "."); split(min, b, "."); \
+        for (i = 1; i <= 3; i++) { \
+          if ((a[i] + 0) < (b[i] + 0)) return 1; \
+          if ((a[i] + 0) > (b[i] + 0)) return 0; \
+        } \
+        return 0; \
+      } \
+      $1 ~ /^(curl|libcurl)-[0-9]/ { \
+        name = $1; sub(/-[0-9].*/, "", name); \
+        ver = $1; sub(/^[^0-9]+/, "", ver); sub(/-r[0-9]+$/, "", ver); \
+        if (older(ver, "8.23.0")) { \
+          printf "%s %s is below 8.23.0\n", name, ver > "/dev/stderr"; \
+          bad = 1; exit 1; \
+        } \
+        seen[name] = ver; \
+      } \
+      END { \
+        if (bad) exit 1; \
+        if (!(seen["curl"] && seen["libcurl"])) { \
+          print "curl and libcurl must both be installed at >= 8.23.0" > "/dev/stderr"; \
+          exit 1; \
+        } \
+      }'
+USER nextjs
