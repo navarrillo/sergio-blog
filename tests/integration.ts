@@ -105,6 +105,29 @@ try {
         route,
       );
   }
+  const homeHtml = (await (await get('/')).text()).replaceAll(/\s+/g, ' ');
+  for (const tag of [
+    'rel="icon" href="/favicon.svg"',
+    'rel="apple-touch-icon" href="/apple-touch-icon.png"',
+    'rel="manifest" href="/site.webmanifest"',
+    'name="apple-mobile-web-app-title" content="Sergio Navarro"',
+  ])
+    assert.ok(homeHtml.includes(tag), tag);
+  for (const [route, type] of [
+    ['/favicon.svg', 'image/svg+xml'],
+    ['/apple-touch-icon.png', 'image/png'],
+    ['/icon-192.png', 'image/png'],
+    ['/icon-512.png', 'image/png'],
+    ['/site.webmanifest', 'application/manifest+json'],
+  ] as const) {
+    const response = await get(route);
+    assert.equal(response.status, 200, route);
+    assert.ok(
+      response.headers.get('content-type')?.includes(type),
+      `${route} ${response.headers.get('content-type')}`,
+    );
+    assert.ok((await response.arrayBuffer()).byteLength > 32, route);
+  }
   const loginPage = await get('/admin/login');
   assert.match(await loginPage.text(), /Entrar con passkey/);
   const policy = loginPage.headers.get('permissions-policy') || '';
