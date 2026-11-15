@@ -108,6 +108,8 @@ docker compose --env-file "$BLOG_ENV" exec blog bin/create-admin
 
 The command prompts for a new password, shows the authenticator secret and otpauth URI only on that terminal, and confirms a current TOTP code. There is no default blog password. Wait for the next code before logging in. Re-enroll with `bin/enroll-totp`; recover password + TOTP with `bin/recover-admin`. These commands revoke sessions, require a TTY, make no external requests, and do not write setup secrets to logs or plaintext setup files. The necessary encrypted-at-rest-backup copy of the actual TOTP database secret is private SQLite data.
 
+`node --import tsx bin/admin.ts revoke-passkeys` deletes passkeys and pending WebAuthn challenges only. It does not need a hidden prompt, and it does not change the password, the TOTP secret, or open sessions. `bin/recover-admin` and `bin/enroll-totp` still leave passkeys in place, so a passkey can sign in until `revoke-passkeys` runs. Schema version 4 is applied by the existing `bin/migrate.ts` step during deploy. No separate migration command is required.
+
 ## 4. Host Caddy and fail2ban
 
 Copy only `deploy/blog.caddy` and `deploy/umami.caddy` into `/etc/caddy/sites/`. Adjust loopback ports if needed. Ensure the existing main Caddyfile already imports this directory. Validate the complete Caddy configuration before reloading the existing `caddy.service`; do not replace unrelated site configuration.
