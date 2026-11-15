@@ -18,8 +18,8 @@ export async function migrate() {
   const version = Number(
     (database.prepare('PRAGMA user_version').get() as any).user_version,
   );
-  if (version >= 3) return;
-  if (existsSync(path.join(config.data, 'blog.db')) && version < 3) {
+  if (version >= 4) return;
+  if (existsSync(path.join(config.data, 'blog.db')) && version < 4) {
     mkdirSync(config.backups, { recursive: true, mode: 0o700 });
     await backup(
       database,
@@ -56,7 +56,8 @@ CREATE TRIGGER posts_agent_status AFTER UPDATE OF status ON posts
 WHEN OLD.created_by_token_id IS NOT NULL AND OLD.status <> NEW.status
 BEGIN UPDATE posts SET agent_access_revoked_at=COALESCE(agent_access_revoked_at,strftime('%Y-%m-%dT%H:%M:%fZ','now')) WHERE id=NEW.id; END;
 PRAGMA user_version=2; COMMIT;`);
-  database.exec(`BEGIN IMMEDIATE;
+  if (version < 3)
+    database.exec(`BEGIN IMMEDIATE;
 ALTER TABLE posts ADD COLUMN edit_version INTEGER NOT NULL DEFAULT 1;
 CREATE TABLE working_copies(post_id INTEGER PRIMARY KEY REFERENCES posts(id), content TEXT NOT NULL, updated_at TEXT NOT NULL);
 CREATE TABLE editor_creations(request_key TEXT PRIMARY KEY,post_id INTEGER NOT NULL REFERENCES posts(id),edit_version INTEGER NOT NULL);
@@ -66,6 +67,27 @@ WHEN NEW.edit_version=OLD.edit_version
 BEGIN UPDATE posts SET edit_version=OLD.edit_version+1 WHERE id=NEW.id; END;
 CREATE INDEX posts_pinned ON posts(featured,status,published_at);
 PRAGMA user_version=3; COMMIT;`);
+  if (version < 4)
+    database.exec(`BEGIN IMMEDIATE;
+ALTER TABLE sessions ADD COLUMN authenticated_at INTEGER NOT NULL DEFAULT 0;
+CREATE TABLE passkeys(
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL CHECK(length(name) BETWEEN 1 AND 64),
+  credential_id TEXT NOT NULL UNIQUE,
+  public_key BLOB NOT NULL,
+  sign_count INTEGER NOT NULL DEFAULT 0 CHECK(sign_count>=0),
+  transports TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  last_used_at TEXT
+);
+CREATE TABLE webauthn_challenges(
+  challenge_hash TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK(kind IN ('authentication','registration')),
+  expires INTEGER NOT NULL,
+  ip TEXT NOT NULL,
+  session_token TEXT
+);
+PRAGMA user_version=4; COMMIT;`);
 }
 let depth = 0;
 export function transaction<T>(fn: () => T): T {

@@ -38,6 +38,8 @@ COOKIE_SECURE=false bin/recover-admin
 
 There is no default password, public signup, or web recovery. Wait for a new TOTP code after enrollment, because the confirming code is consumed. Log in at `/admin/login`. Admin sessions expire after 12 hours. Production uses `__Host-` Secure/HttpOnly/SameSite=Lax cookies; local HTTP uses a separate cookie name.
 
+After a recent sign-in, a passkey on this device can be registered and then used without the password. TOTP remains the fallback. See [the admin guide](docs/ADMIN.md). `node --import tsx bin/admin.ts revoke-passkeys` deletes passkeys only. `bin/recover-admin` and `bin/enroll-totp` do not remove them.
+
 ## Included
 
 - Responsive homepage, chronological archive, full text search, tags, article pages, projects and public editorial statistics.

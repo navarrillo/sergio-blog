@@ -13,7 +13,9 @@ export const GET: APIRoute = async () => {
           posts,
           projects: db().prepare('SELECT * FROM projects').all(),
           settings: db()
-            .prepare("SELECT * FROM settings WHERE key<>'analytics_cache'")
+            .prepare(
+              "SELECT * FROM settings WHERE key NOT IN ('analytics_cache','webauthn_user_handle')",
+            )
             .all(),
           revisions: db().prepare('SELECT * FROM revisions').all(),
           working_copies: db().prepare('SELECT * FROM working_copies').all(),

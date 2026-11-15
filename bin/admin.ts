@@ -9,6 +9,7 @@ import {
   listAgentTokens,
   revokeAgentToken,
 } from '../src/lib/auth';
+import { revokePasskeys } from '../src/lib/passkeys';
 if (process.argv[2] === 'agent-token') {
   const [, , , command, value, ...extra] = process.argv;
   if (extra.length) throw new Error('Unexpected arguments');
@@ -30,6 +31,13 @@ if (process.argv[2] === 'agent-token') {
     throw new Error(
       'Usage: bin/agent-token create <name> | list | revoke <name|id>',
     );
+  process.exit(0);
+}
+if (process.argv[2] === 'revoke-passkeys') {
+  if (process.argv.length !== 3)
+    throw new Error('Usage: bin/admin.ts revoke-passkeys');
+  const removed = revokePasskeys();
+  console.log(`Revoked ${removed} passkey${removed === 1 ? '' : 's'}.`);
   process.exit(0);
 }
 if (!process.stdin.isTTY || !process.stdout.isTTY)
@@ -81,7 +89,7 @@ try {
     db().exec('DELETE FROM sessions');
     console.log('Password saved. TOTP enrollment is required before sign-in.');
   } else if (command !== 'enroll')
-    throw new Error('Usage: admin create | recover | enroll');
+    throw new Error('Usage: admin create | recover | enroll | revoke-passkeys');
   if (!db().prepare('SELECT id FROM admin').get())
     throw new Error('Create the administrator first.');
   const totp = newTotpSecret();
@@ -100,6 +108,7 @@ try {
   db()
     .prepare('UPDATE admin SET totp_secret=?,last_totp=? WHERE id=1')
     .run(totp, step);
+  // Enrollment and recovery revoke sessions. Passkeys stay until revoke-passkeys.
   db().exec('DELETE FROM sessions');
   console.log('Authenticator enrolled. Existing sessions revoked.');
 } finally {

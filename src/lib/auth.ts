@@ -79,6 +79,12 @@ const digest = (token: string) =>
     .digest('hex');
 export const cookieName = () =>
   config.secure ? '__Host-blog_session' : 'blog_dev_session';
+export type Session = {
+  token: string;
+  csrf: string;
+  expires: number;
+  authenticated_at: number;
+};
 export function session(request: Request) {
   const raw = request.headers
     .get('cookie')
@@ -87,13 +93,48 @@ export function session(request: Request) {
     .find((v) => v.startsWith(cookieName() + '='))
     ?.split('=')[1];
   if (!raw) return null;
-  return db()
-    .prepare('SELECT * FROM sessions WHERE token=? AND expires>?')
-    .get(digest(raw), Date.now()) as {
-    token: string;
-    csrf: string;
-    expires: number;
-  } | null;
+  return (
+    (db()
+      .prepare(
+        'SELECT token,csrf,expires,authenticated_at FROM sessions WHERE token=? AND expires>?',
+      )
+      .get(digest(raw), Date.now()) as Session | undefined) || null
+  );
+}
+const SESSION_SECONDS = 12 * 3600;
+export function sessionCookieOptions() {
+  return {
+    path: '/',
+    secure: config.secure,
+    httpOnly: true,
+    sameSite: 'lax' as const,
+    maxAge: SESSION_SECONDS,
+  };
+}
+export function createSession() {
+  const token = randomBytes(32).toString('base64url');
+  const csrf = createHmac(
+    'sha256',
+    process.env.CSRF_SECRET || 'local-development-csrf',
+  )
+    .update(randomBytes(32))
+    .digest('base64url');
+  const time = Date.now();
+  db().prepare('DELETE FROM sessions WHERE expires<=?').run(time);
+  db()
+    .prepare(
+      'INSERT INTO sessions(token,csrf,expires,authenticated_at) VALUES(?,?,?,?)',
+    )
+    .run(digest(token), csrf, time + SESSION_SECONDS * 1000, time);
+  return token;
+}
+export function isPublicAdminPath(path: string, method: string) {
+  if (path === '/admin/login' || path === '/api/admin/login') return true;
+  return (
+    method === 'POST' &&
+    (path === '/api/admin/login/passkey' ||
+      path === '/api/admin/login/passkey/options')
+  );
 }
 let dummyHash: Promise<string>;
 export async function login(password: string, code: string) {
@@ -111,18 +152,7 @@ export async function login(password: string, code: string) {
       .prepare('UPDATE admin SET last_totp=? WHERE id=1 AND last_totp<?')
       .run(step, step);
     if (!result.changes) return null;
-    const token = randomBytes(32).toString('base64url');
-    const csrf = createHmac(
-      'sha256',
-      process.env.CSRF_SECRET || 'local-development-csrf',
-    )
-      .update(randomBytes(32))
-      .digest('base64url');
-    db().prepare('DELETE FROM sessions WHERE expires<=?').run(Date.now());
-    db()
-      .prepare('INSERT INTO sessions VALUES(?,?,?)')
-      .run(digest(token), csrf, Date.now() + 12 * 3600000);
-    return token;
+    return createSession();
   });
 }
 export function csrfValid(request: Request, csrf: string, provided: string) {

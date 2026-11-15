@@ -3,6 +3,11 @@ declare namespace App {
   interface Locals {
     scriptHashes?: string[];
     ip: string;
-    session: { token: string; csrf: string; expires: number } | null;
+    session: {
+      token: string;
+      csrf: string;
+      expires: number;
+      authenticated_at: number;
+    } | null;
   }
 }
