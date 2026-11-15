@@ -1,7 +1,13 @@
 import type { APIRoute } from 'astro';
 import { z } from 'zod';
 import { FormBodyError, readFormBody, loginFields } from '../../../lib/forms';
-import { login, allow, cookieName, csrfValid } from '../../../lib/auth';
+import {
+  login,
+  allow,
+  cookieName,
+  csrfValid,
+  sessionCookieOptions,
+} from '../../../lib/auth';
 import { config } from '../../../lib/config';
 import { db, setSetting, transaction } from '../../../lib/db';
 import { renderMarkdown, safeURL, imageURL } from '../../../lib/content';
@@ -43,13 +49,7 @@ export const POST: APIRoute = async ({
       return new Response('Unable to sign in', { status: 401 });
     const token = await login(fields.password, fields.code);
     if (!token) return new Response('Unable to sign in', { status: 401 });
-    cookies.set(cookieName(), token, {
-      path: '/',
-      secure: config.secure,
-      httpOnly: true,
-      sameSite: 'lax',
-      maxAge: 43200,
-    });
+    cookies.set(cookieName(), token, sessionCookieOptions());
     return redirect('/admin', 303);
   }
   if (!locals.session) return new Response('Unauthorized', { status: 401 });

@@ -37,7 +37,7 @@ test('v2 migration preserves live content, pins, history and URLs, backs up, and
   await migrate();
   await migrate();
   expect((db().prepare('PRAGMA user_version').get() as any).user_version).toBe(
-    3,
+    4,
   );
   expect(workingPost(1)).toMatchObject({
     title: 'Existing live',

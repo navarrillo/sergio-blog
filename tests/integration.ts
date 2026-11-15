@@ -105,6 +105,22 @@ try {
         route,
       );
   }
+  const loginPage = await get('/admin/login');
+  assert.match(await loginPage.text(), /Entrar con passkey/);
+  const policy = loginPage.headers.get('permissions-policy') || '';
+  assert.match(policy, /publickey-credentials-get=\(self\)/);
+  assert.match(policy, /publickey-credentials-create=\(self\)/);
+  assert.equal((await get('/api/admin/login/passkey/options')).status, 401);
+  assert.equal((await get('/api/admin/passkeys')).status, 401);
+  const crossOrigin = await get('/api/admin/login/passkey/options', {
+    method: 'POST',
+    headers: {
+      origin: 'https://evil.example',
+      'content-type': 'application/json',
+    },
+  });
+  assert.equal(crossOrigin.status, 401);
+  assert.deepEqual(await crossOrigin.json(), { error: 'Unable to sign in' });
   for (const route of [
     '/posts/secret',
     '/api/v1/posts/secret',

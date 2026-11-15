@@ -623,6 +623,11 @@ label textarea {
   width: 100%;
   margin-top: 8px;
 }
+.passkey-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .admin-heading {
   display: flex;
   justify-content: space-between;
