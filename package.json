@@ -24,6 +24,7 @@
   "dependencies": {
     "@astrojs/node": "11.1.9",
     "@modelcontextprotocol/sdk": "1.32.1",
+    "@simplewebauthn/server": "14.1.0",
     "@tiptap/core": "3.32.0",
     "@tiptap/extension-image": "3.32.0",
     "@tiptap/extension-table": "3.32.0",

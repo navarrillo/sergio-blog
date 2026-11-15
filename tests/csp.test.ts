@@ -1,5 +1,5 @@
 import { test, expect } from 'vitest';
-import { serializeJsonLd, scriptHash } from '../src/lib/csp';
+import { serializeJsonLd, scriptHash, permissionsPolicy } from '../src/lib/csp';
 import { assertScriptPolicy } from './csp';
 test('JSON-LD round-trips closing-script text and its exact bytes have a CSP hash', () => {
   const headline = '</script><script>alert(1)</script><p> & café';
@@ -14,6 +14,11 @@ test('JSON-LD round-trips closing-script text and its exact bytes have a CSP has
       'JSON-LD',
     ),
   ).not.toThrow();
+});
+test('permissions policy allows passkey create and get on this origin', () => {
+  expect(permissionsPolicy).toContain('publickey-credentials-get=(self)');
+  expect(permissionsPolicy).toContain('publickey-credentials-create=(self)');
+  expect(permissionsPolicy).toContain('camera=()');
 });
 test('build guard rejects executable inline scripts without a matching hash', () => {
   expect(() =>

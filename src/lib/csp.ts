@@ -7,3 +7,5 @@ export function serializeJsonLd(value: unknown) {
 export function scriptHash(source: string) {
   return `'sha256-${createHash('sha256').update(source).digest('base64')}'`;
 }
+export const permissionsPolicy =
+  'camera=(), microphone=(), geolocation=(), publickey-credentials-get=(self), publickey-credentials-create=(self)';

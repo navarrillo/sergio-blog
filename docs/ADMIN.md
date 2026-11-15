@@ -36,9 +36,48 @@ Settings use labelled profile links and direct photo selection. Projects use the
 
 Projects have a thumbnail overview with status totals, text search, status filters and newest/name sorting. Add or edit opens a dedicated form with a live public-card preview, description counter, image selection/removal and Cmd/Ctrl+S saving. Filters are retained when returning from editing or deletion. Changes become public only after **Save project**; failed saves keep the form intact, and leaving with unsaved changes triggers the browser warning. Permanent deletion is under **More** and confirms the project name. Covers retain their full original proportions (including 1200 × 628 images); active status text and its dot share the same green.
 
+## Passkeys
+
+A passkey is a discoverable WebAuthn credential. Sign-in does not ask for a username. The authenticator must verify the person and store a resident key. Password and TOTP remain available at `/admin/login`.
+
+The relying party id is the host of `PUBLIC_ORIGIN`. In production that host is `blog.sergionavarro.me`, not the apex domain. The browser origin must match `PUBLIC_ORIGIN` exactly. Browsers offer passkeys on HTTPS and on localhost.
+
+### Register on this device
+
+Sign in with the password and a current authenticator code. Open **Passkeys** and choose **Create on this device** within `WEBAUTHN_REAUTH_SECONDS` of that sign-in (default 300; allowed values are 60–3600). A later passkey sign-in refreshes the same window. The sign-in page button is **Entrar con passkey**. Registration asks for a platform authenticator, and both registration and sign-in prefer this device.
+
+**Safari, Face ID, and iCloud Keychain.** On iPhone, Safari prompts for Face ID or the device passcode. On a Mac with Touch ID, Safari can use the fingerprint; the system may also offer the device passcode. Turn on iCloud Keychain for the same Apple ID, and enable Passwords, on each device that should receive the passkey. You can also register a separate passkey on each device. The site requires user verification. It cannot require biometrics exclusively.
+
+Up to 20 passkeys can be stored. Challenges last two minutes and are deleted when they are used. A signature counter that moves backwards is rejected and the stored counter stays unchanged. Authenticators that always report zero are accepted. Passkey failures share the login limit with a wrong password: 6 attempts per address in 10 minutes. Failure responses are the generic "Unable to sign in".
+
+These two routes do not require a session:
+
+```text
+POST /api/admin/login/passkey/options
+POST /api/admin/login/passkey
+```
+
+### TOTP fallback
+
+The password and authenticator form on `/admin/login` is unchanged. Losing a passkey does not remove TOTP. Wait for the next authenticator code when the current one was just used to enroll or to sign in.
+
+### Revocation and recovery
+
+Delete one passkey on the Passkeys page. That does not end the current session.
+
+Remove every passkey without changing the password, the TOTP secret, or open sessions:
+
+```sh
+node --import tsx bin/admin.ts revoke-passkeys
+```
+
+Pending WebAuthn challenges are deleted too. A session cookie that already exists keeps working until it expires, or until `bin/enroll-totp` or `bin/recover-admin` runs. Those two commands revoke sessions and replace TOTP. They do not delete passkeys, so a passkey can still sign in afterwards. Run `revoke-passkeys` as well when a device is lost. `bin/recover-admin` also replaces the password.
+
+Schema version 4 adds the passkey tables and `sessions.authenticated_at`. `bin/migrate.ts` applies it and takes the same pre-migration backup as earlier schema changes. Deployment already runs that migration; there is no separate passkey command. Existing admin credentials and posts stay. A session created before the migration cannot add a passkey until the next sign-in.
+
 ## Migration and release
 
-Schema version 3 adds private working copies, edit versions, draft creation request keys, revision labels, and a pin lookup index. The existing post schema and publication boundary remain authoritative. The migration takes a consistent pre-migration backup and runs only through the existing explicit migration/deployment flow.
+Schema version 3 adds private working copies, edit versions, draft creation request keys, revision labels, and a pin lookup index. Schema version 4 adds passkeys and does not change editorial data. The existing post schema and publication boundary remain authoritative. The migration takes a consistent pre-migration backup and runs only through the existing explicit migration/deployment flow.
 
 Private ZIP export version 2 includes `working_copies` in `content.json` and one Markdown file per working copy under `working-copies/`. Live content remains under `posts/`. SQLite backups already include all working-copy and request-key state; backup/restore verification covers a published article with pending private content.
 

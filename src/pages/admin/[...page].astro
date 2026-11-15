@@ -14,6 +14,7 @@ import {
   workingPost,
 } from '../../lib/editorial';
 import { analytics } from '../../lib/analytics';
+import { listPasskeys, reauthWindowMs, withinReauth } from '../../lib/passkeys';
 const page = Astro.params.page || '';
 const csrf = Astro.locals.session?.csrf;
 const id = Number(Astro.url.searchParams.get('id'));
@@ -112,7 +113,22 @@ const known = [
   'settings',
   'inbox',
   'tags',
+  'passkeys',
 ];
+let passkeys: ReturnType<typeof listPasskeys> = [];
+let canRegister = false;
+let reauthMinutes = 5;
+if (page === 'passkeys') {
+  passkeys = listPasskeys();
+  try {
+    reauthMinutes = Math.round(reauthWindowMs() / 60000);
+    canRegister =
+      !!Astro.locals.session &&
+      withinReauth(Astro.locals.session.authenticated_at);
+  } catch {
+    canRegister = false;
+  }
+}
 const missing =
   !known.includes(page) ||
   (['edit', 'preview'].includes(page) && !post) ||
@@ -133,6 +149,7 @@ const headings: Record<string, string> = {
   projects: 'Projects',
   inbox: 'X inbox',
   tags: 'Tags',
+  passkeys: 'Passkeys',
 };
 ---
 
@@ -179,6 +196,11 @@ const headings: Record<string, string> = {
           </label>
           <button type="submit">Sign in →</button>
         </form>
+        <p>Or sign in with a passkey on this device.</p>
+        <button type="button" class="secondary" id="passkey-login">
+          Entrar con passkey
+        </button>
+        <p id="passkey-login-error" class="form-error" role="alert" hidden />
       </section>
     ) : (
       <>
@@ -243,6 +265,7 @@ const headings: Record<string, string> = {
                 + New post
               </a>
               <a href="/admin/tags">Manage tags</a>
+              <a href="/admin/passkeys">Passkeys</a>
               <a href="/api/admin/export">Export everything ↓</a>
             </div>
             <form class="admin-filters" method="get" action="/admin">
@@ -1063,6 +1086,95 @@ const headings: Record<string, string> = {
             </form>
           </>
         )}
+        {page === 'passkeys' && (
+          <>
+            <p>
+              Add a passkey on this device within {reauthMinutes} minutes of
+              signing in with a password and authenticator code, or with another
+              passkey. Password and authenticator sign-in stay available. On
+              iPhone or Mac, Safari asks for Face ID, Touch ID, or the device
+              passcode and can keep the passkey in iCloud Keychain.
+            </p>
+            {!canRegister && (
+              <p class="notice" role="status">
+                Sign in again to add a passkey.
+              </p>
+            )}
+            <section data-passkeys data-csrf={csrf}>
+              <label>
+                Name
+                <input
+                  data-passkey-name
+                  maxlength="64"
+                  autocomplete="off"
+                  placeholder="This iPhone"
+                  disabled={!canRegister}
+                />
+              </label>
+              <button type="button" data-passkey-add disabled={!canRegister}>
+                Create on this device
+              </button>
+              <p
+                data-passkey-message
+                class="form-error"
+                role="status"
+                hidden
+              ></p>
+              <div class="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Added</th>
+                      <th>Last used</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {passkeys.map((item) => (
+                      <tr data-passkey-id={item.id}>
+                        <td>
+                          <input value={item.name} maxlength="64" />
+                        </td>
+                        <td>
+                          <time data-local-time datetime={item.created_at}>
+                            {item.created_at}
+                          </time>
+                        </td>
+                        <td>
+                          {item.last_used_at ? (
+                            <time data-local-time datetime={item.last_used_at}>
+                              {item.last_used_at}
+                            </time>
+                          ) : (
+                            'Never'
+                          )}
+                        </td>
+                        <td class="passkey-actions">
+                          <button
+                            type="button"
+                            class="quiet"
+                            data-passkey-rename
+                          >
+                            Rename
+                          </button>
+                          <button
+                            type="button"
+                            class="quiet"
+                            data-passkey-delete
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {!passkeys.length && <p class="empty">No passkeys yet.</p>}
+            </section>
+          </>
+        )}
         {page === 'inbox' && (
           <>
             <p>
@@ -1240,6 +1352,11 @@ const headings: Record<string, string> = {
     )
   }
   <script src="../../scripts/admin.ts"></script>
+  {
+    (page === 'login' || page === 'passkeys') && (
+      <script src="../../scripts/passkey.ts" />
+    )
+  }
   {page === 'edit' && <script src="../../scripts/editor.ts" />}
   {page === 'projects' && <script src="../../scripts/projects.ts" />}
 </Base>
