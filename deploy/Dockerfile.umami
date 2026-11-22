@@ -4,35 +4,94 @@ FROM node:22.23.5-alpine3.24@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534
 FROM ghcr.io/umami-software/umami:3.4.1@sha256:e69d1a7932e9dab0fc523edc7be1f3a53f3c261f57856fc2167ae74a8fc022e8
 COPY --from=patched-node /usr/local/bin/node /usr/local/bin/node
 RUN test "$(node --version)" = "v22.23.5"
-# Upstream 3.4.1 ships curl/libcurl 8.22.0 (CVE-2026-92392). Upgrade both from Alpine 3.24
-# and fail the build if either is still below 8.23.0. A minimum, not an exact revision,
-# so the next Alpine patch still builds. Return to the upstream runtime user.
+# Upstream 3.4.1 ships curl/libcurl 8.22.0 (CVE-2026-92392) and OpenSSL 3.5.9-r0
+# (CVE-2026-88822, CVE-2026-88823, CVE-2026-95691, CVE-2026-95692, CVE-2026-107496).
+# Upgrade them from Alpine 3.24 and fail the build below the floors. A minimum, not an
+# exact revision, so the next Alpine patch still builds.
+# @prisma/config pins effect 3.20.0 (CVE-2026-121707). The image installs runtime
+# dependencies with pnpm and then copies the Next standalone tree into the same
+# node_modules. Apply a pnpm override for effect, reinstall only the lockfile's direct
+# dependencies, and put the standalone packages back. Return to the upstream runtime user.
 USER root
 RUN set -o pipefail \
- && apk upgrade --no-cache curl libcurl \
+ && apk upgrade --no-cache curl libcurl libcrypto3 libssl3 \
  && apk list -I 2>/dev/null | awk ' \
-      function older(v, min, i, a, b) { \
-        split(v, a, "."); split(min, b, "."); \
+      function older(v, min, i, a, b, va, vb, ra, rb) { \
+        split(v, va, "-r"); split(min, vb, "-r"); \
+        split(va[1], a, "."); split(vb[1], b, "."); \
         for (i = 1; i <= 3; i++) { \
           if ((a[i] + 0) < (b[i] + 0)) return 1; \
           if ((a[i] + 0) > (b[i] + 0)) return 0; \
         } \
-        return 0; \
+        ra = (va[2] == "" ? 0 : va[2] + 0); \
+        rb = (vb[2] == "" ? 0 : vb[2] + 0); \
+        return ra < rb; \
       } \
-      $1 ~ /^(curl|libcurl)-[0-9]/ { \
+      function floor(name) { \
+        if (name == "libcrypto3" || name == "libssl3") return "3.5.9-r1"; \
+        return "8.23.0"; \
+      } \
+      $1 ~ /^(curl|libcurl|libcrypto3|libssl3)-[0-9]/ { \
         name = $1; sub(/-[0-9].*/, "", name); \
-        ver = $1; sub(/^[^0-9]+/, "", ver); sub(/-r[0-9]+$/, "", ver); \
-        if (older(ver, "8.23.0")) { \
-          printf "%s %s is below 8.23.0\n", name, ver > "/dev/stderr"; \
+        ver = $1; sub(/^[^0-9]+/, "", ver); \
+        min = floor(name); \
+        if (older(ver, min)) { \
+          printf "%s %s is below %s\n", name, ver, min > "/dev/stderr"; \
           bad = 1; exit 1; \
         } \
         seen[name] = ver; \
       } \
       END { \
         if (bad) exit 1; \
-        if (!(seen["curl"] && seen["libcurl"])) { \
-          print "curl and libcurl must both be installed at >= 8.23.0" > "/dev/stderr"; \
+        if (!(seen["curl"] && seen["libcurl"] && seen["libcrypto3"] && seen["libssl3"])) { \
+          print "curl, libcurl, libcrypto3, and libssl3 must be installed at the required minimum" > "/dev/stderr"; \
           exit 1; \
         } \
       }'
+WORKDIR /app
+RUN set -eu \
+ && cp package.json /tmp/umami-package.json \
+ && mkdir -p /tmp/umami-nm/top \
+ && cp -a node_modules/.pnpm /tmp/umami-nm/pnpm \
+ && find node_modules -mindepth 1 -maxdepth 1 ! -name .pnpm -exec cp -a {} /tmp/umami-nm/top/ \; \
+ && printf '%s\n' '{' \
+      '  "private": true,' \
+      '  "dependencies": {' \
+      '    "@prisma/adapter-pg": "7.10.0",' \
+      '    "@prisma/client": "7.10.0",' \
+      '    "chalk": "^6.0.1",' \
+      '    "dotenv": "^18.0.8",' \
+      '    "npm-run-all": "^4.1.5",' \
+      '    "prisma": "7.10.0",' \
+      '    "semver": "^7.8.5"' \
+      '  }' \
+      '}' > package.json \
+ && if grep -q '^overrides:' pnpm-workspace.yaml; then \
+      printf '%s\n' '  "effect@<3.22.1": "3.22.1"' >> pnpm-workspace.yaml; \
+    else \
+      printf '\n%s\n' 'overrides:' '  "effect@<3.22.1": "3.22.1"' >> pnpm-workspace.yaml; \
+    fi \
+ && pnpm install --no-frozen-lockfile --ignore-scripts \
+ && for dir in /tmp/umami-nm/pnpm/*; do \
+      name=$(basename "$dir"); \
+      case "$name" in effect@*) continue ;; esac; \
+      if [ ! -d "node_modules/.pnpm/$name" ]; then mv "$dir" "node_modules/.pnpm/$name"; fi; \
+    done \
+ && for link in /tmp/umami-nm/top/*; do \
+      name=$(basename "$link"); \
+      if [ ! -e "node_modules/$name" ]; then rm -f "node_modules/$name"; cp -a "$link" "node_modules/$name"; fi; \
+    done \
+ && if [ -d /tmp/umami-nm/top/.bin ]; then \
+      mkdir -p node_modules/.bin; \
+      for bin in /tmp/umami-nm/top/.bin/*; do \
+        name=$(basename "$bin"); \
+        if [ ! -e "node_modules/.bin/$name" ]; then rm -f "node_modules/.bin/$name"; cp -a "$bin" "node_modules/.bin/$name"; fi; \
+      done; \
+    fi \
+ && cp /tmp/umami-package.json package.json \
+ && rm -rf /tmp/umami-nm /tmp/umami-package.json \
+ && test -f node_modules/next/package.json \
+ && test -f node_modules/prisma/package.json \
+ && test "$(node --version)" = "v22.23.5" \
+ && node -e 'const fs=require("fs"); const {execFileSync}=require("child_process"); const files=execFileSync("find",["node_modules","-path","*/effect/package.json","-type","f"],{encoding:"utf8"}).split("\n").filter(Boolean); if(!files.length){console.error("effect is not installed"); process.exit(1);} const older=v=>{const a=v.split(".").map(Number); const b=[3,22,1]; for(let i=0;i<3;i++){if((a[i]||0)<b[i])return true; if((a[i]||0)>b[i])return false;} return false;}; for (const file of files){const pkg=JSON.parse(fs.readFileSync(file,"utf8")); if(pkg.name!=="effect"||older(pkg.version)){console.error(file+" is "+pkg.name+"@"+pkg.version+", need effect >= 3.22.1"); process.exit(1);}}'
 USER nextjs
